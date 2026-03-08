@@ -1,0 +1,91 @@
+
+@import "leaflet/dist/leaflet.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Configurações Globais de Renderização de Texto e Nitidez */
+html, body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}
+
+/* Minimal custom scrollbar for panels */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9; 
+}
+::-webkit-scrollbar-thumb {
+  /* Increased contrast: Slate-300 (#cbd5e1) -> Slate-400 (#94a3b8) */
+  background: #94a3b8; 
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  /* Darker hover: Slate-400 (#94a3b8) -> Slate-500 (#64748b) */
+  background: #64748b; 
+}
+
+/* Leaflet map z-index fix for overlay */
+.leaflet-container {
+  z-index: 0;
+  background: #e2e8f0;
+}
+
+/* 
+   FORCE PRECISION CURSOR IN DRAW MODE
+   Targeting Leaflet internals and SVG to override default 'grab' and 'pointer' icons
+*/
+.cursor-crosshair .leaflet-container,
+.cursor-crosshair .leaflet-grab,
+.cursor-crosshair .leaflet-interactive,
+.cursor-crosshair svg,
+.cursor-crosshair path {
+  cursor: crosshair !important;
+}
+
+/* 
+   FORCE PANNING CURSOR (GRABBING)
+   Higher specificity rules to override crosshair even when draw mode is active.
+   Targeting the same internal elements to ensure priority in the CSS cascade.
+*/
+.is-panning,
+.is-panning *,
+.is-panning .leaflet-container,
+.is-panning .leaflet-grab,
+.is-panning .leaflet-interactive,
+.is-panning svg,
+.is-panning path {
+  cursor: grabbing !important;
+}
+
+@layer base {
+  /* 
+    CORREÇÃO CRÍTICA DE INPUTS 
+    Força fundo branco e texto escuro para evitar problemas com 
+    temas escuros do navegador ou autofill.
+  */
+  input, select, textarea {
+    background-color: #ffffff !important;
+    color: #0f172a !important; /* slate-900 */
+  }
+
+  /* Override para Autofill do Chrome/Webkit que injeta fundo azul/amarelo/cinza */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover, 
+  input:-webkit-autofill:focus, 
+  input:-webkit-autofill:active {
+      -webkit-box-shadow: 0 0 0 30px white inset !important;
+      -webkit-text-fill-color: #0f172a !important;
+      transition: background-color 5000s ease-in-out 0s;
+  }
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
