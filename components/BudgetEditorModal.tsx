@@ -45,11 +45,14 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
     const [waterRate, setWaterRate] = useState(lastProposal?.waterRate ?? 35.00);
     const [sewageRate, setSewageRate] = useState(lastProposal?.sewageRate ?? 45.00);
     const [evtePrice, setEvtePrice] = useState(lastProposal?.evtePrice ?? 1500.00);
+    const [evteQty, setEvteQty] = useState(lastProposal?.evteQty ?? 1);
     const [hasEvte, setHasEvte] = useState(lastProposal?.hasEvte ?? true);
     const [hasBooster, setHasBooster] = useState(lastProposal?.hasBooster ?? false);
     const [boosterPrice, setBoosterPrice] = useState(lastProposal?.boosterPrice ?? 2500.00);
+    const [boosterQty, setBoosterQty] = useState(lastProposal?.boosterQty ?? 1);
     const [hasLiftStation, setHasLiftStation] = useState(lastProposal?.hasLiftStation ?? false);
     const [liftStationPrice, setLiftStationPrice] = useState(lastProposal?.liftStationPrice ?? 3500.00);
+    const [liftStationQty, setLiftStationQty] = useState(lastProposal?.liftStationQty ?? 1);
     const [extraItems, setExtraItems] = useState<BudgetItem[]>(lastProposal?.extraItems || []);
     // Default validity changed to 30 days
     const [validityDays, setValidityDays] = useState(lastProposal?.validityDays ?? 30);
@@ -90,11 +93,14 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
         setWaterRate(p.waterRate);
         setSewageRate(p.sewageRate);
         setEvtePrice(p.evtePrice);
+        setEvteQty(p.evteQty ?? 1);
         setHasEvte(p.hasEvte);
         setHasBooster(p.hasBooster);
         setBoosterPrice(p.boosterPrice);
+        setBoosterQty(p.boosterQty ?? 1);
         setHasLiftStation(p.hasLiftStation);
         setLiftStationPrice(p.liftStationPrice);
+        setLiftStationQty(p.liftStationQty ?? 1);
         setExtraItems(p.extraItems || []);
         setValidityDays(p.validityDays);
         setPaymentStages(p.paymentStages || []);
@@ -148,11 +154,14 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
             waterRate !== currentProposal.waterRate ||
             sewageRate !== currentProposal.sewageRate ||
             evtePrice !== currentProposal.evtePrice ||
+            evteQty !== (currentProposal.evteQty ?? 1) ||
             hasEvte !== currentProposal.hasEvte ||
             hasBooster !== currentProposal.hasBooster ||
             boosterPrice !== currentProposal.boosterPrice ||
+            boosterQty !== (currentProposal.boosterQty ?? 1) ||
             hasLiftStation !== currentProposal.hasLiftStation ||
             liftStationPrice !== currentProposal.liftStationPrice ||
+            liftStationQty !== (currentProposal.liftStationQty ?? 1) ||
             validityDays !== currentProposal.validityDays ||
             JSON.stringify(extraItems) !== JSON.stringify(currentProposal.extraItems) ||
             JSON.stringify(paymentStages) !== JSON.stringify(currentProposal.paymentStages);
@@ -164,22 +173,25 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
         liftStationPrice, validityDays, extraItems, paymentStages
     ]);
 
+    // Helper for rounding
+    const round = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+
     // Itens Automáticos baseados na configuração (ONLY FOR SUBDIVISION)
     const autoItems = useMemo(() => {
         if (category === 'service') return []; 
 
         const items: BudgetItem[] = [];
-        if (hasEvte) items.push({ id: 'evte', description: 'Solicitação de Viabilidade Técnica e Econômica (EVTE)', unit: 'un', quantity: 1, unitPrice: evtePrice, totalPrice: evtePrice, isAuto: true });
+        if (hasEvte) items.push({ id: 'evte', description: 'Solicitação de Viabilidade Técnica e Econômica (EVTE)', unit: 'un', quantity: evteQty, unitPrice: evtePrice, totalPrice: round(evteQty * evtePrice), isAuto: true });
         if (projectType === 'water' || projectType === 'both') {
-            items.push({ id: 'water_proj', description: 'Projeto Executivo de Rede de Água', unit: 'lote', quantity: totalLots, unitPrice: waterRate, totalPrice: totalLots * waterRate, isAuto: true });
-            if (hasBooster) items.push({ id: 'booster', description: 'Estação Pressurizadora (Booster)', unit: 'un', quantity: 1, unitPrice: boosterPrice, totalPrice: boosterPrice, isAuto: true });
+            items.push({ id: 'water_proj', description: 'Projeto Executivo de Rede de Água', unit: 'lote', quantity: totalLots, unitPrice: waterRate, totalPrice: round(totalLots * waterRate), isAuto: true });
+            if (hasBooster) items.push({ id: 'booster', description: 'Estação Pressurizadora (Booster)', unit: 'un', quantity: boosterQty, unitPrice: boosterPrice, totalPrice: round(boosterQty * boosterPrice), isAuto: true });
         }
         if (projectType === 'sewage' || projectType === 'both') {
-            items.push({ id: 'sewage_proj', description: 'Projeto Executivo de Rede de Esgoto', unit: 'lote', quantity: totalLots, unitPrice: sewageRate, totalPrice: totalLots * sewageRate, isAuto: true });
-            if (hasLiftStation) items.push({ id: 'eee', description: 'Estação Elevatória de Esgoto (EEE)', unit: 'un', quantity: 1, unitPrice: liftStationPrice, totalPrice: liftStationPrice, isAuto: true });
+            items.push({ id: 'sewage_proj', description: 'Projeto Executivo de Rede de Esgoto', unit: 'lote', quantity: totalLots, unitPrice: sewageRate, totalPrice: round(totalLots * sewageRate), isAuto: true });
+            if (hasLiftStation) items.push({ id: 'eee', description: 'Estação Elevatória de Esgoto (EEE)', unit: 'un', quantity: liftStationQty, unitPrice: liftStationPrice, totalPrice: round(liftStationQty * liftStationPrice), isAuto: true });
         }
         return items;
-    }, [category, projectType, totalLots, waterRate, sewageRate, hasEvte, evtePrice, hasBooster, boosterPrice, hasLiftStation, liftStationPrice]);
+    }, [category, projectType, totalLots, waterRate, sewageRate, hasEvte, evtePrice, evteQty, hasBooster, boosterPrice, boosterQty, hasLiftStation, liftStationPrice, liftStationQty]);
 
     const allItems = useMemo(() => {
         return [...autoItems, ...extraItems].filter(item => item.totalPrice > 0);
@@ -284,8 +296,8 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                 status: editingId ? (currentProposals.find(p => p.id === editingId)?.status || 'pending') : 'pending',
                 generatedBy: currentUser?.username || 'Usuário',
                 createdAt: editingId ? (currentProposals.find(p => p.id === editingId)?.createdAt || now) : now,
-                projectType, waterRate, sewageRate, evtePrice, hasEvte, hasBooster, 
-                boosterPrice, hasLiftStation, liftStationPrice, extraItems, 
+                projectType, waterRate, sewageRate, evtePrice, evteQty, hasEvte, hasBooster, 
+                boosterPrice, boosterQty, hasLiftStation, liftStationPrice, liftStationQty, extraItems, 
                 validityDays, paymentStages, totalValue
             };
 
@@ -474,9 +486,9 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
 
                                     <section className="space-y-3">
                                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-1">Adicionais</h4>
-                                        <BudgetToggle checked={hasEvte} onChange={setHasEvte} value={evtePrice} onValueChange={setEvtePrice} label="EVTE" color="indigo" />
-                                        <BudgetToggle checked={hasBooster} onChange={setHasBooster} value={boosterPrice} onValueChange={setBoosterPrice} label="Booster" color="blue" />
-                                        <BudgetToggle checked={hasLiftStation} onChange={setHasLiftStation} value={liftStationPrice} onValueChange={setLiftStationPrice} label="EEE (Elevatória)" color="orange" />
+                                        <BudgetToggle checked={hasEvte} onChange={setHasEvte} value={evtePrice} onValueChange={setEvtePrice} qty={evteQty} onQtyChange={setEvteQty} label="EVTE" color="indigo" />
+                                        <BudgetToggle checked={hasBooster} onChange={setHasBooster} value={boosterPrice} onValueChange={setBoosterPrice} qty={boosterQty} onQtyChange={setBoosterQty} label="Booster" color="blue" />
+                                        <BudgetToggle checked={hasLiftStation} onChange={setHasLiftStation} value={liftStationPrice} onValueChange={setLiftStationPrice} qty={liftStationQty} onQtyChange={setLiftStationQty} label="EEE (Elevatória)" color="orange" />
                                     </section>
                                 </>
                             )}
@@ -529,14 +541,26 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                                     placeholder="Descrição" 
                                                 />
                                             </div>
-                                            <div className="flex justify-end items-center gap-2">
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase">Valor</span>
-                                                <div className="w-24">
-                                                    <SmartNumberInput 
-                                                        value={item.unitPrice} 
-                                                        onChange={(v:number) => setExtraItems(extraItems.map(i => i.id === item.id ? { ...i, unitPrice: v, totalPrice: v*i.quantity } : i))} 
-                                                        className="text-right text-xs font-black bg-transparent border-none focus:bg-white focus:ring-1 focus:ring-blue-200 rounded px-1 py-0.5" 
-                                                    />
+                                            <div className="flex justify-end items-center gap-4">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-bold text-slate-400 uppercase">Qtd</span>
+                                                    <div className="w-12">
+                                                        <SmartNumberInput 
+                                                            value={item.quantity} 
+                                                            onChange={(v:number) => setExtraItems(extraItems.map(i => i.id === item.id ? { ...i, quantity: v, totalPrice: round(v*i.unitPrice) } : i))} 
+                                                            className="text-center text-xs font-black bg-transparent border-none focus:bg-white focus:ring-1 focus:ring-blue-200 rounded px-1 py-0.5" 
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-bold text-slate-400 uppercase">Valor</span>
+                                                    <div className="w-24">
+                                                        <SmartNumberInput 
+                                                            value={item.unitPrice} 
+                                                            onChange={(v:number) => setExtraItems(extraItems.map(i => i.id === item.id ? { ...i, unitPrice: v, totalPrice: round(v*i.quantity) } : i))} 
+                                                            className="text-right text-xs font-black bg-transparent border-none focus:bg-white focus:ring-1 focus:ring-blue-200 rounded px-1 py-0.5" 
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -596,7 +620,7 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                 <img 
                                     src={orgDetails.logoUrl} 
                                     alt="Watermark" 
-                                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.05] pointer-events-none z-0" 
+                                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.15] pointer-events-none z-0" 
                                     style={{ width: '500px' }} 
                                 />
                             )}
@@ -712,7 +736,7 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
     );
 };
 
-const BudgetToggle = ({ checked, onChange, value, onValueChange, label, color }: any) => {
+const BudgetToggle = ({ checked, onChange, value, onValueChange, qty, onQtyChange, label, color }: any) => {
     const colorClasses: any = {
         blue: 'text-blue-600 border-blue-200 bg-blue-50',
         orange: 'text-orange-600 border-orange-200 bg-orange-50',
@@ -720,15 +744,28 @@ const BudgetToggle = ({ checked, onChange, value, onValueChange, label, color }:
     };
     return (
         <div className={`p-3 rounded-2xl border-2 transition-all duration-300 ${checked ? `${colorClasses[color]} scale-[1.02] shadow-sm` : 'border-slate-100 bg-white'}`}>
-            <div className="flex items-center justify-between gap-3">
-                <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
-                    <div className={`relative w-9 h-5 rounded-full transition-colors ${checked ? (color === 'orange' ? 'bg-orange-500' : color === 'indigo' ? 'bg-indigo-500' : 'bg-blue-50') : 'bg-slate-200'}`}>
-                        <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="sr-only" />
-                        <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`} />
+            <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                    <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                        <div className={`relative w-9 h-5 rounded-full transition-colors ${checked ? (color === 'orange' ? 'bg-orange-500' : color === 'indigo' ? 'bg-indigo-500' : 'bg-blue-50') : 'bg-slate-200'}`}>
+                            <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="sr-only" />
+                            <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${checked ? 'translate-x-4' : ''}`} />
+                        </div>
+                        <span className={`text-[11px] font-black uppercase tracking-tight truncate ${checked ? 'text-slate-800' : 'text-slate-400'}`}>{label}</span>
+                    </label>
+                </div>
+                {checked && (
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-black/5">
+                        <div className="flex items-center gap-1.5 shrink-0 bg-white/50 px-2 py-1 rounded-lg flex-1 min-w-0">
+                            <span className="text-[9px] font-bold opacity-60 uppercase">Qtd</span>
+                            <SmartNumberInput value={qty} onChange={onQtyChange} className="bg-transparent border-none p-0 text-xs font-black w-full text-center focus:ring-0" />
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0 bg-white/50 px-2 py-1 rounded-lg flex-[2] min-w-0">
+                            <span className="text-[9px] font-bold opacity-60 uppercase">R$</span>
+                            <SmartNumberInput value={value} onChange={onValueChange} className="bg-transparent border-none p-0 text-xs font-black w-full text-right focus:ring-0" />
+                        </div>
                     </div>
-                    <span className={`text-[11px] font-black uppercase tracking-tight truncate ${checked ? 'text-slate-800' : 'text-slate-400'}`}>{label}</span>
-                </label>
-                {checked && (<div className="flex items-center gap-1.5 shrink-0 bg-white/50 px-2 py-1 rounded-lg"><span className="text-[10px] font-bold opacity-60">R$</span><SmartNumberInput value={value} onChange={onValueChange} className="bg-transparent border-none p-0 text-xs font-black w-16 text-right focus:ring-0" /></div>)}
+                )}
             </div>
         </div>
     );

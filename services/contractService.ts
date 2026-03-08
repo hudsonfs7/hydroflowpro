@@ -198,7 +198,7 @@ export const generateBudgetHtml = (data: BudgetData) => {
           left: 50%;
           transform: translate(-50%, -50%);
           width: 500px;
-          opacity: 0.05;
+          opacity: 0.15;
           z-index: 0;
           pointer-events: none;
       }

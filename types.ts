@@ -76,8 +76,11 @@ export interface Proposal {
     hasEvte: boolean;
     hasBooster: boolean;
     boosterPrice: number;
+    boosterQty?: number;
     hasLiftStation: boolean;
     liftStationPrice: number;
+    liftStationQty?: number;
+    evteQty?: number;
     extraItems: BudgetItem[];
     validityDays: number;
     paymentStages: PaymentStage[];
