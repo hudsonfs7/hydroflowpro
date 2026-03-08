@@ -330,6 +330,7 @@ export interface BudgetData {
     generatedBy?: string;
     organization?: Organization;
     category?: ProposalCategory; // Added to distinguish print layout
+    projectType?: 'water' | 'sewage' | 'both';
 }
 
 export interface CalculationResult {

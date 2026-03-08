@@ -35,6 +35,7 @@ const FinancialManagerModal = React.lazy(() => import('./components/FinancialMan
 const LoginModal = React.lazy(() => import('./components/LoginModal').then(m => ({ default: m.LoginModal })));
 const UserManagerModal = React.lazy(() => import('./components/UserManagerModal').then(m => ({ default: m.UserManagerModal })));
 const BudgetEditorModal = React.lazy(() => import('./components/BudgetEditorModal').then(m => ({ default: m.BudgetEditorModal })));
+import { SplashScreen } from './components/SplashScreen';
 
 import { generateDXF } from './services/dxfService'; 
 import { parseDxfToAnnotations } from './services/dxfImportService';
@@ -116,6 +117,7 @@ export default function App() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
   const [isFinancialManagerOpen, setIsFinancialManagerOpen] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentOrgName, setCurrentOrgName] = useState<string>("");
   
@@ -797,6 +799,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+    {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
     <div className={`flex flex-col h-[100dvh] w-full bg-slate-50 touch-none overflow-hidden pb-[64px] md:pb-0 ${isDrawMode || activeAnnotationId || pendingNodeType || drawingDraft ? 'cursor-crosshair' : ''} ${isPanning ? 'is-panning' : ''}`} onMouseMove={handlePointerMove} onTouchMove={handlePointerMove} onMouseUp={handlePointerUp} onTouchEnd={handlePointerUp}>
       <header className="h-14 shrink-0 bg-white border-b border-slate-200 px-4 flex items-center justify-between shadow-sm z-50 relative">
         <div className="flex items-center gap-2">

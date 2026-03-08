@@ -21,6 +21,12 @@ const DEFAULT_STAGES: Omit<PaymentStage, 'id'>[] = [
     { description: 'Aprovação do projeto', percentage: 30 }
 ];
 
+/**
+ * ATENÇÃO: Este arquivo contém o PREVIEW do orçamento.
+ * SEMPRE que atualizar o visual aqui, certifique-se de atualizar o gerador de PDF em services/contractService.ts.
+ * O preview e o PDF devem ser espelhos um do outro.
+ */
+
 export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, userOrgName, currentUser, onClose, initialProposalId, initialCategory }) => {
     // Carrega a última proposta apenas como modelo inicial
     const lastProposal = metadata.proposals && metadata.proposals.length > 0 
@@ -341,7 +347,8 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
             revision: revisionDisplay,
             generatedBy: currentUser?.username || 'Sistema',
             organization: orgDetails,
-            category: category
+            category: category,
+            projectType: projectType
         };
         const html = generateBudgetHtml(budgetData);
         const win = window.open('', '_blank');
@@ -350,6 +357,18 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
 
     const pColor = orgDetails?.primaryColor || '#10b981';
     const sColor = orgDetails?.secondaryColor || '#f0fdf4';
+
+    const isSubdivision = !category || category === 'subdivision';
+    let subHeader = 'INFRAESTRUTURA E SANEAMENTO';
+    if (isSubdivision) {
+        if (projectType === 'both') {
+            subHeader = 'ELABORAÇÃO DE PROJETOS DE ABASTECIMENTO DE ÁGUA E ESGOTAMENTO SANITÁRIO.';
+        } else if (projectType === 'water') {
+            subHeader = 'ELABORAÇÃO DE PROJETOS DE ABASTECIMENTO DE ÁGUA.';
+        } else if (projectType === 'sewage') {
+            subHeader = 'ELABORAÇÃO DE PROJETOS DE ESGOTAMENTO SANITÁRIO.';
+        }
+    }
 
     return (
         <ModalContainer onClose={onClose} zIndex="z-[8000]" backdropClass="bg-slate-900/70 backdrop-blur-md" closeOnBackdropClick={false}>
@@ -642,10 +661,15 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
 
                             <div className="text-center mb-8 relative z-10">
                                 <div className="text-base font-black text-slate-800 uppercase tracking-[0.2em]">PROPOSTA COMERCIAL</div>
-                                <div className="text-[9px] font-bold uppercase tracking-[0.2em] mt-1" style={{color: pColor}}>Infraestrutura e Saneamento</div>
                             </div>
 
                             <div className="mb-8 w-full relative z-10">
+                                <div className="flex gap-4 mb-4">
+                                    <div className="pl-3 flex-1" style={{borderLeft: `4px solid ${pColor}`}}>
+                                        <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Objeto</label>
+                                        <div className="text-[11px] font-black text-slate-800 uppercase leading-snug whitespace-nowrap">{subHeader}</div>
+                                    </div>
+                                </div>
                                 <div className="flex gap-4">
                                     <div className="pl-3 flex-1" style={{borderLeft: `4px solid ${pColor}`}}>
                                         <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Contratante</label>
@@ -670,6 +694,7 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                     <tr style={{backgroundColor: pColor}}>
                                         <th className="px-4 py-2 text-[9px] font-black text-white uppercase tracking-widest rounded-l-md">Descrição</th>
                                         <th className="px-3 py-2 text-[9px] font-black text-white uppercase tracking-widest text-center">Qtd</th>
+                                        <th className="px-3 py-2 text-[9px] font-black text-white uppercase tracking-widest text-right">Unitário (R$)</th>
                                         <th className="px-4 py-2 text-[9px] font-black text-white uppercase tracking-widest text-right rounded-r-md">Total (R$)</th>
                                     </tr>
                                 </thead>
@@ -678,14 +703,15 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                         <tr key={idx} className="group">
                                             <td className="px-4 py-3 text-[10px] font-bold text-slate-700">{item.description}</td>
                                             <td className="px-3 py-3 text-[10px] font-bold text-slate-500 text-center">{item.quantity}</td>
-                                            <td className="px-4 py-3 text-[10px] font-black text-slate-800 text-right font-mono">{item.totalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                            <td className="px-3 py-3 text-[10px] font-bold text-slate-500 text-right font-mono">{item.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="px-4 py-3 text-[10px] font-black text-slate-800 text-right font-mono">{item.totalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot>
                                     <tr>
-                                        <td colSpan={2} className="px-4 py-4 text-right text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">TOTAL</td>
-                                        <td className="px-4 py-4 text-right text-lg font-black font-mono tracking-tighter" style={{color: pColor}}>R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                        <td colSpan={3} className="px-4 py-4 text-right text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">TOTAL</td>
+                                        <td className="px-4 py-4 text-right text-lg font-black font-mono tracking-tighter" style={{color: pColor}}>R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     </tr>
                                 </tfoot>
                             </table>

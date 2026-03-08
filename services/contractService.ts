@@ -148,6 +148,12 @@ export const generateContractHtml = (data: ContractData) => {
     `;
 };
 
+/**
+ * ATENÇÃO: Este arquivo gera o PDF do orçamento.
+ * SEMPRE que atualizar este arquivo, certifique-se de atualizar o PREVIEW em BudgetEditorModal.tsx.
+ * O preview e o PDF devem ser espelhos um do outro.
+ */
+
 export const generateBudgetHtml = (data: BudgetData) => {
     const org = data.organization;
     const primaryColor = org?.primaryColor || '#10b981';
@@ -161,6 +167,17 @@ export const generateBudgetHtml = (data: BudgetData) => {
 
     const visibleItems = data.items.filter(item => item.totalPrice > 0);
     const isSubdivision = !data.category || data.category === 'subdivision';
+
+    let subHeader = 'INFRAESTRUTURA E SANEAMENTO';
+    if (isSubdivision) {
+        if (data.projectType === 'both') {
+            subHeader = 'ELABORAÇÃO DE PROJETOS DE ABASTECIMENTO DE ÁGUA E ESGOTAMENTO SANITÁRIO.';
+        } else if (data.projectType === 'water') {
+            subHeader = 'ELABORAÇÃO DE PROJETOS DE ABASTECIMENTO DE ÁGUA.';
+        } else if (data.projectType === 'sewage') {
+            subHeader = 'ELABORAÇÃO DE PROJETOS DE ESGOTAMENTO SANITÁRIO.';
+        }
+    }
 
     const css = `
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
@@ -292,14 +309,6 @@ export const generateBudgetHtml = (data: BudgetData) => {
       .stripe-s { height: 8px; width: 100%; background-color: ${secondaryColor}; }
     `;
 
-    const itemsHtml = visibleItems.map(item => `
-        <tr>
-            <td>${item.description}</td>
-            <td class="text-center">${item.quantity}</td>
-            <td class="text-right font-mono">${item.totalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-        </tr>
-    `).join('');
-
     const stagesHtml = data.paymentStages.map(s => `
         <div class="stage-item">
             <span>${s.description}</span>
@@ -337,10 +346,15 @@ export const generateBudgetHtml = (data: BudgetData) => {
 
                 <div class="main-title-container">
                     <div class="main-title">PROPOSTA COMERCIAL</div>
-                    <div class="sub-header">INFRAESTRUTURA E SANEAMENTO</div>
                 </div>
 
                 <div class="client-info">
+                    <div class="client-row" style="margin-bottom: 16px;">
+                        <div class="client-col-left" style="border-left: 4px solid ${primaryColor};">
+                            <span class="label-sm">Objeto</span>
+                            <div class="val-contratante" style="font-size: 11px; white-space: nowrap;">${subHeader}</div>
+                        </div>
+                    </div>
                     <div class="client-row">
                         <div class="client-col-left">
                             <span class="label-sm">Contratante</span>
@@ -361,16 +375,24 @@ export const generateBudgetHtml = (data: BudgetData) => {
                 <table>
                     <thead>
                         <tr>
-                            <th width="70%">Descrição dos Serviços</th>
+                            <th width="55%">Descrição dos Serviços</th>
                             <th width="10%" class="text-center">Qtd</th>
+                            <th width="15%" class="text-right">Unitário (R$)</th>
                             <th width="20%" class="text-right">Total (R$)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${itemsHtml}
+                        ${visibleItems.map(item => `
+                            <tr>
+                                <td>${item.description}</td>
+                                <td class="text-center">${item.quantity}</td>
+                                <td class="text-right font-mono">${item.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="text-right font-mono">${item.totalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                        `).join('')}
                         <tr class="total-row">
-                            <td colspan="2" class="text-right total-label">TOTAL</td>
-                            <td class="text-right total-val font-mono">R$ ${data.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                            <td colspan="3" class="text-right total-label">TOTAL</td>
+                            <td class="text-right total-val font-mono">R$ ${data.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                     </tbody>
                 </table>
