@@ -18,8 +18,8 @@ export const resolveContractorName = (metadata: ProjectMetadata, userOrgName?: s
     return 'OLIMPO SOFTWARE LTDA';
 };
 
-export const getDefaultContractData = (metadata: ProjectMetadata, userOrgName?: string): ContractData => {
-    const contratada = resolveContractorName(metadata, userOrgName);
+export const getDefaultContractData = (metadata: ProjectMetadata, userOrgName?: string, organization?: Organization): ContractData => {
+    const contratada = organization?.name || resolveContractorName(metadata, userOrgName);
     const contratante = metadata.company || 'CLIENTE NÃO IDENTIFICADO';
     const project = metadata.name || 'Empreendimento';
     const city = metadata.city || 'Cidade - UF';
@@ -40,6 +40,82 @@ export const getDefaultContractData = (metadata: ProjectMetadata, userOrgName?: 
         descLotes += `, sendo ${parts.join(', ')}`;
     }
 
+    // --- Lógica de Orçamento ---
+    const budgets = metadata.proposals || [];
+    const acceptedProposalId = metadata.acceptedProposalId;
+    let selectedBudget = budgets.find(b => b.id === acceptedProposalId);
+    let isDraft = !selectedBudget;
+
+    if (!selectedBudget && budgets.length > 0) {
+        // Pega o último cadastrado se não houver aceito
+        selectedBudget = budgets[budgets.length - 1];
+    }
+
+    const budgetRef = selectedBudget ? {
+        number: selectedBudget.number,
+        date: selectedBudget.createdAt,
+        totalValue: selectedBudget.totalValue,
+        paymentStages: selectedBudget.paymentStages || [],
+        items: [
+            ...(selectedBudget.projectType === 'both' || selectedBudget.projectType === 'water' ? [{ id: 'w', description: 'Projeto Executivo de Rede de Água', unit: 'un', quantity: totalLotes, unitPrice: selectedBudget.waterRate, totalPrice: totalLotes * selectedBudget.waterRate }] : []),
+            ...(selectedBudget.projectType === 'both' || selectedBudget.projectType === 'sewage' ? [{ id: 's', description: 'Projeto Executivo de Rede de Esgoto', unit: 'un', quantity: totalLotes, unitPrice: selectedBudget.sewageRate, totalPrice: totalLotes * selectedBudget.sewageRate }] : []),
+            ...(selectedBudget.hasEvte ? [{ id: 'e', description: 'Estudo de Viabilidade Técnica (EVTE)', unit: 'un', quantity: selectedBudget.evteQty || 1, unitPrice: selectedBudget.evtePrice, totalPrice: (selectedBudget.evteQty || 1) * selectedBudget.evtePrice }] : []),
+            ...(selectedBudget.hasBooster ? [{ id: 'b', description: 'Estação Pressurizadora (Booster)', unit: 'un', quantity: selectedBudget.boosterQty || 1, unitPrice: selectedBudget.boosterPrice, totalPrice: (selectedBudget.boosterQty || 1) * selectedBudget.boosterPrice }] : []),
+            ...(selectedBudget.hasLiftStation ? [{ id: 'l', description: 'Estação Elevatória de Esgoto (EEE)', unit: 'un', quantity: selectedBudget.liftStationQty || 1, unitPrice: selectedBudget.liftStationPrice, totalPrice: (selectedBudget.liftStationQty || 1) * selectedBudget.liftStationPrice }] : []),
+            ...(selectedBudget.extraItems || [])
+        ].filter(i => i.totalPrice > 0)
+    } : undefined;
+
+    const budgetTableHtml = budgetRef ? `
+        <div class="budget-table-container">
+            <table class="budget-table">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">DESCRIÇÃO</th>
+                        <th style="text-align: center;">QTD</th>
+                        <th style="text-align: right;">UNITÁRIO (R$)</th>
+                        <th style="text-align: right;">TOTAL (R$)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${budgetRef.items.map(item => `
+                        <tr>
+                            <td>${item.description}</td>
+                            <td style="text-align: center;">${item.quantity}</td>
+                            <td style="text-align: right;">${item.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                            <td style="text-align: right;">${item.totalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                    `).join('')}
+                    <tr class="total-row">
+                        <td colspan="3" style="text-align: right; font-weight: bold; padding-top: 15px;">TOTAL</td>
+                        <td style="text-align: right; font-weight: 900; font-size: 14pt; color: ${organization?.primaryColor || '#1e293b'}; padding-top: 15px;">R$ ${budgetRef.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    `.replace(/\n\s*/g, '') : '';
+
+    const budgetReferenceText = budgetRef ? `<span style="background-color: #fef9c3; padding: 2px 6px; border-radius: 4px; font-weight: bold;">Conforme Orçamento nº ${budgetRef.number}, datado de ${new Date(budgetRef.date).toLocaleDateString('pt-BR')}, no valor total de R$ ${budgetRef.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.</span>` : '';
+
+    let paymentStagesText = '';
+    if (budgetRef && budgetRef.paymentStages && budgetRef.paymentStages.length > 0) {
+        paymentStagesText = `<br><br>As condições de pagamento estabelecidas na referida proposta são:<br>` + 
+            budgetRef.paymentStages.map(s => `&bull; <strong>${s.percentage}%</strong>: ${s.description}`).join('<br>');
+    }
+
+    // --- Alíneas Dinâmicas ---
+    const alineas = [];
+    if (selectedBudget?.projectType === 'both' || selectedBudget?.projectType === 'water') {
+        alineas.push('a) Dimensionamento hidráulico da Rede de Abastecimento de Água Tratada;');
+    }
+    if (selectedBudget?.projectType === 'both' || selectedBudget?.projectType === 'sewage') {
+        alineas.push('b) Dimensionamento da Rede de Coleção e Transporte de Esgotamento Sanitário;');
+    }
+    alineas.push('c) Elaboração de Memorial Descritivo e de Cálculo conforme normas da ABNT;');
+    alineas.push('d) Geração de plantas, perfis e detalhes técnicos em formato digital;');
+    alineas.push('e) Plotagens e encadernamento dos serviços técnicos;');
+    alineas.push('f) Emissão de Anotação de Responsabilidade Técnica (ART) de projeto.');
+
     const clauses: ContractClause[] = [
         {
             id: 'c1',
@@ -48,13 +124,11 @@ export const getDefaultContractData = (metadata: ProjectMetadata, userOrgName?: 
         },
         {
             id: 'c2',
-            title: 'DO ESCOPO',
-            text: `Os serviços técnicos especializados compreenderão:
-            <br>a) Dimensionamento hidráulico da Rede de Abastecimento de Água Tratada;
-            <br>b) Dimensionamento da Rede de Coleção e Transporte de Saneamento;
-            <br>c) Elaboração de Memorial Descritivo e de Cálculo conforme normas da ABNT;
-            <br>d) Geração de plantas, perfis e detalhes técnicos em formato digital;
-            <br>e) Emissão de Anotação de Responsabilidade Técnica (ART) de projeto.`
+            title: 'DO ESCOPO E VALORES',
+            text: `Os serviços técnicos especializados compreenderão:<br>
+            ${alineas.join('<br>')}<br><br>
+            ${budgetReferenceText}<br>
+            ${budgetTableHtml}`
         },
         {
             id: 'c3',
@@ -67,50 +141,119 @@ export const getDefaultContractData = (metadata: ProjectMetadata, userOrgName?: 
         },
         {
             id: 'c4',
+            title: 'DA ALTERIDADE',
+            text: `A CONTRATANTE declara ciência de que a atual diretriz da EMBASA limita a realização de apenas 03 (três) correções por taxa de análise recolhida. Somado a isso, as variáveis de risco inerentes ao processo de aprovação, cujas regras muitas vezes não são estritamente definidas, podem resultar em exigências inéditas ou pedidos que demandam custos adicionais não previstos.
+            <br><strong>Parágrafo Único:</strong> Havendo necessidade de quitação de nova taxa de análise, ou caso surjam exigências por parte da equipe de correções da EMBASA que envolvam revisões nos projetos ou serviços terceirizados fora do objeto deste contrato, tais custos serão de responsabilidade exclusiva da CONTRATANTE.`
+        },
+        {
+            id: 'c5',
             title: 'DOS PRAZOS',
             text: `O prazo para execução dos serviços será definido conforme cronograma físico-financeiro a ser aprovado pelas partes.`
         },
         {
-            id: 'c5',
+            id: 'c6',
             title: 'DO PREÇO E PAGAMENTO',
-            text: `Pelos serviços descritos na Cláusula Primeira e Segunda, a CONTRATANTE pagará à CONTRATADA o valor ajustado na Proposta Comercial anexa a este instrumento.`
+            text: `Pelos serviços descritos na Cláusula Primeira e Segunda, a CONTRATANTE pagará à CONTRATADA o valor total de R$ ${(budgetRef?.totalValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, conforme condições estabelecidas na Proposta Comercial vinculada.${paymentStagesText}`
         },
         {
-            id: 'c6',
+            id: 'c7',
             title: 'DAS DISPOSIÇÕES GERAIS',
-            text: `Fica eleito o foro da comarca de ${city.split('-')[0].trim()} para dirimir quaisquer dúvidas oriundas deste contrato.`
+            text: `Fica eleito o foro da comarca de ITAMARAJU - BA para dirimir quaisquer dúvidas oriundas deste contrato.`
         }
     ];
 
     return {
-        title: 'CONTRATAÇÃO DE SERVIÇOS TÉCNICOS ESPECIALIZADOS PARA ELABORAÇÃO DE PROJETOS DE SANEAMENTO BÁSICO.',
+        title: isDraft ? 'RASCUNHO - CONTRATAÇÃO DE SERVIÇOS TÉCNICOS ESPECIALIZADOS' : 'CONTRATAÇÃO DE SERVIÇOS TÉCNICOS ESPECIALIZADOS PARA ELABORAÇÃO DE PROJETOS DE SANEAMENTO BÁSICO.',
         header: `Pelo presente instrumento particular de prestação de serviços, de um lado, <strong>${contratada}</strong>, doravante denominada simplesmente <strong>CONTRATADA</strong>, e de outro lado, <strong>${contratante}</strong>, doravante denominada simplesmente <strong>CONTRANTE</strong>, têm entre si justo e contratado o quanto segue:`,
         clauses,
         footer: `E por estarem assim justos e contratados, assinam o presente instrumento em 02 (duas) vias de igual teor e forma.`,
         city,
         date,
         companyName: contratada,
-        clientName: contratante
+        clientName: contratante,
+        organization,
+        isDraft,
+        budgetRef
     };
 };
 
 export const generateContractHtml = (data: ContractData) => {
+    const org = data.organization;
+    const primaryColor = org?.primaryColor || '#1e293b';
+    const secondaryColor = org?.secondaryColor || '#e2e8f0';
+    const logoHtml = org?.logoUrl ? `<div style="text-align: center; margin-bottom: 1cm;"><img src="${org.logoUrl}" style="height: 80px;" /></div>` : '';
+    const watermarkHtml = org?.logoUrl ? `<img src="${org.logoUrl}" class="watermark" />` : '';
+    const draftWatermark = data.isDraft ? `
+        <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 150pt; color: rgba(0,0,0,0.05); font-weight: bold; pointer-events: none; z-index: -1; white-space: nowrap; text-transform: uppercase;">
+            RASCUNHO
+        </div>
+    ` : '';
+
     const ordinal = (n: number) => {
         const s = ["PRIMEIRA", "SEGUNDA", "TERCEIRA", "QUARTA", "QUINTA", "SEXTA", "SÉTIMA", "OITAVA", "NONA", "DÉCIMA", "DÉCIMA PRIMEIRA", "DÉCIMA SEGUNDA"];
         return s[n] || `${n + 1}ª`;
     };
 
     const css = `
-      @page { size: A4; margin: 2.5cm; }
-      body { font-family: 'Times New Roman', Times, serif; color: #000; line-height: 1.6; text-align: justify; }
+      @page { size: A4; margin: 0; }
+      body { 
+          font-family: 'Times New Roman', Times, serif; 
+          color: #000; 
+          line-height: 1.6; 
+          text-align: justify; 
+          margin: 0;
+          padding: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+      }
+      .watermark {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 500px;
+          opacity: 0.1;
+          z-index: -2;
+          pointer-events: none;
+      }
+      .header-stripes {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 16px;
+          display: flex;
+          flex-direction: column;
+          z-index: 100;
+      }
+      .footer-stripes {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 16px;
+          display: flex;
+          flex-direction: column;
+          z-index: 100;
+      }
+      .stripe-p { height: 8px; width: 100%; background-color: ${primaryColor}; }
+      .stripe-s { height: 8px; width: 100%; background-color: ${secondaryColor}; }
+
       .title { font-weight: bold; text-align: center; margin-bottom: 2cm; text-transform: uppercase; font-size: 14pt; }
       .header { margin-bottom: 1cm; text-indent: 1.5cm; }
-      .clause-title { font-weight: bold; margin-top: 1cm; margin-bottom: 0.5cm; text-transform: uppercase; }
+      .clause-title { font-weight: bold; margin-top: 1cm; margin-bottom: 0.5cm; text-transform: uppercase; color: ${primaryColor}; }
       .clause-text { margin-bottom: 0.5cm; text-indent: 1.5cm; }
       .footer { margin-top: 1cm; text-indent: 1.5cm; }
       .date-city { text-align: center; margin-top: 2cm; margin-bottom: 3cm; }
-      .signature-container { display: flex; justify-content: space-between; margin-top: 1cm; }
+      .signature-container { display: flex; justify-content: space-between; margin-top: 1cm; page-break-inside: avoid; }
       .signature-box { width: 45%; text-align: center; border-top: 1px solid #000; padding-top: 5px; font-size: 10pt; }
+      
+      /* Estilos da Tabela de Orçamento no Contrato */
+      .budget-table-container { margin: 1cm 0; page-break-inside: avoid; }
+      .budget-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 10pt; }
+      .budget-table th { background: ${primaryColor}; color: white; padding: 10px; text-transform: uppercase; font-weight: bold; }
+      .budget-table td { padding: 8px 10px; border-bottom: 1px solid #eee; color: #334155; }
+      .budget-table .total-row td { border-bottom: none; }
     `;
 
     const clausesHtml = data.clauses.map((c, i) => `
@@ -127,19 +270,45 @@ export const generateContractHtml = (data: ContractData) => {
         <style>${css}</style>
       </head>
       <body>
-        <div class="title">${data.title}</div>
-        <div class="header">${data.header}</div>
-        ${clausesHtml}
-        <div class="footer">${data.footer}</div>
-        <div class="date-city">${data.city}, ${data.date}.</div>
-        <div class="signature-container">
-            <div class="signature-box">
-                <strong>${data.companyName}</strong><br>CONTRATADA
-            </div>
-            <div class="signature-box">
-                <strong>${data.clientName}</strong><br>CONTRATANTE
-            </div>
+        <div class="header-stripes">
+            <div class="stripe-p"></div>
+            <div class="stripe-s"></div>
         </div>
+        <div class="footer-stripes">
+            <div class="stripe-p"></div>
+            <div class="stripe-s"></div>
+        </div>
+        ${watermarkHtml}
+        ${draftWatermark}
+        
+        <table style="width: 100%; border-collapse: collapse; border: none;">
+            <thead>
+                <tr><td><div style="height: 2.5cm;"></div></td></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="padding: 0 2.5cm;">
+                        ${logoHtml}
+                        <div class="title" style="color: ${primaryColor}">${data.title}</div>
+                        <div class="header">${data.header}</div>
+                        ${clausesHtml}
+                        <div class="footer">${data.footer}</div>
+                        <div class="date-city">${data.city}, ${data.date}.</div>
+                        <div class="signature-container">
+                            <div class="signature-box">
+                                <strong>${data.companyName}</strong><br>CONTRATADA
+                            </div>
+                            <div class="signature-box">
+                                <strong>${data.clientName}</strong><br>CONTRATANTE
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr><td><div style="height: 2.5cm;"></div></td></tr>
+            </tfoot>
+        </table>
         <script>
             window.onload = () => { setTimeout(() => { window.print(); }, 500); };
         </script>

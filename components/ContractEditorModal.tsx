@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { ProjectMetadata, ContractData, ContractClause } from '../types';
+import { ProjectMetadata, ContractData, ContractClause, Organization } from '../types';
 import { getDefaultContractData, generateContractHtml } from '../services/contractService';
+import { getOrganizationDetails } from '../services/firebaseService';
 import { ModalContainer } from './CommonUI';
 import { CloseIcon, FileSignatureIcon, PlusIcon, TrashIcon, CheckIcon, EyeIcon, PenToolIcon, SaveIcon } from './Icons';
 
@@ -14,9 +15,18 @@ interface ContractEditorModalProps {
 export const ContractEditorModal: React.FC<ContractEditorModalProps> = ({ metadata, userOrgName, onClose }) => {
     const [data, setData] = useState<ContractData | null>(null);
     const [mode, setMode] = useState<'edit' | 'preview'>('edit');
+    const [orgDetails, setOrgDetails] = useState<Organization | undefined>(undefined);
 
     useEffect(() => {
-        setData(getDefaultContractData(metadata, userOrgName));
+        const fetchOrgAndInit = async () => {
+            let org: Organization | undefined = undefined;
+            if (metadata.organizationId && metadata.organizationId !== 'legacy') {
+                org = await getOrganizationDetails(metadata.organizationId);
+                if (org) setOrgDetails(org);
+            }
+            setData(getDefaultContractData(metadata, userOrgName, org));
+        };
+        fetchOrgAndInit();
     }, [metadata, userOrgName]);
 
     const handleUpdateClause = (id: string, field: 'title' | 'text', value: string) => {
@@ -168,31 +178,73 @@ export const ContractEditorModal: React.FC<ContractEditorModalProps> = ({ metada
 
                     {/* MODE: PREVIEW */}
                     {mode === 'preview' && (
-                        <div className="h-full overflow-y-auto p-8 custom-scrollbar flex justify-center bg-slate-200">
-                            <div className="bg-white shadow-2xl w-[21cm] min-h-[29.7cm] p-[2.5cm] text-justify text-black font-serif text-[11pt] leading-relaxed relative">
+                        <div className="h-full overflow-y-auto p-8 custom-scrollbar flex justify-center items-start bg-slate-200">
+                            <div className="bg-white shadow-2xl w-[21cm] min-h-[29.7cm] p-[2.5cm] text-justify text-black font-serif text-[11pt] leading-relaxed relative overflow-hidden">
+                                {/* Stripes */}
+                                <div className="absolute top-0 left-0 right-0 h-4 flex flex-col z-50">
+                                    <div className="h-2 w-full" style={{ backgroundColor: orgDetails?.primaryColor || '#1e293b' }}></div>
+                                    <div className="h-2 w-full" style={{ backgroundColor: orgDetails?.secondaryColor || '#e2e8f0' }}></div>
+                                </div>
+                                <div className="absolute bottom-0 left-0 right-0 h-4 flex flex-col z-50">
+                                    <div className="h-2 w-full" style={{ backgroundColor: orgDetails?.primaryColor || '#1e293b' }}></div>
+                                    <div className="h-2 w-full" style={{ backgroundColor: orgDetails?.secondaryColor || '#e2e8f0' }}></div>
+                                </div>
+
+                                {/* Watermark */}
+                                {orgDetails?.logoUrl && (
+                                    <img src={orgDetails.logoUrl} alt="Watermark" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] opacity-10 pointer-events-none z-0" />
+                                )}
+
+                                {/* Draft Watermark */}
+                                {data.isDraft && (
+                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-45 text-[120pt] font-black text-slate-900/5 pointer-events-none select-none z-0 whitespace-nowrap uppercase">
+                                        RASCUNHO
+                                    </div>
+                                )}
+
+                                {/* Branding Header */}
+                                {orgDetails?.logoUrl && (
+                                    <div className="text-center mb-[1cm] relative z-10">
+                                        <img src={orgDetails.logoUrl} alt="Logo" className="h-20 mx-auto" />
+                                    </div>
+                                )}
+
                                 {/* Header */}
-                                <div className="text-center font-bold mb-[1cm] text-[12pt] uppercase px-4 leading-normal">{data.title}</div>
+                                <div className="text-center font-bold mb-[1cm] text-[12pt] uppercase px-4 leading-normal relative z-10" style={{ color: orgDetails?.primaryColor || '#000' }}>
+                                    {data.title}
+                                </div>
                                 
                                 {/* Intro */}
-                                <p className="mb-4 indent-[1.5cm]" dangerouslySetInnerHTML={{ __html: data.header }} />
+                                <p className="mb-4 indent-[1.5cm] relative z-10" dangerouslySetInnerHTML={{ __html: data.header }} />
+
+                                {/* CSS for budget table in preview */}
+                                <style dangerouslySetInnerHTML={{ __html: `
+                                    .budget-table-container { margin: 1cm 0; width: 100%; }
+                                    .budget-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 9pt; text-indent: 0; }
+                                    .budget-table th { background: ${orgDetails?.primaryColor || '#1e293b'}; color: white; padding: 8px; text-transform: uppercase; font-weight: bold; }
+                                    .budget-table td { padding: 6px 8px; border-bottom: 1px solid #eee; color: #334155; }
+                                    .budget-table .total-row td { border-bottom: none; }
+                                `}} />
 
                                 {/* Clauses */}
                                 {data.clauses.map((clause, index) => (
-                                    <div key={clause.id}>
-                                        <h2 className="mt-5 mb-2 font-bold uppercase text-[11pt]">
+                                    <div key={clause.id} className="relative z-10">
+                                        <h2 className="mt-5 mb-2 font-bold uppercase text-[11pt]" style={{ color: orgDetails?.primaryColor || '#000' }}>
                                             CLÁUSULA {ordinal(index)} - {clause.title}
                                         </h2>
-                                        <p className="mb-4 indent-[1.5cm]" dangerouslySetInnerHTML={{ __html: clause.text.replace(/\n/g, '<br/>') }} />
+                                        <div className="mb-4 indent-[1.5cm] contract-content">
+                                            <div dangerouslySetInnerHTML={{ __html: clause.text.replace(/\n/g, '<br/>') }} />
+                                        </div>
                                     </div>
                                 ))}
 
                                 {/* Footer */}
-                                <p className="mb-4 indent-[1.5cm]">{data.footer}</p>
+                                <p className="mb-4 indent-[1.5cm] relative z-10">{data.footer}</p>
 
                                 <br/><br/>
-                                <p className="text-center">{data.city}, {data.date}.</p>
+                                <p className="text-center relative z-10">{data.city}, {data.date}.</p>
 
-                                <div className="flex justify-between mt-[3cm] gap-8">
+                                <div className="flex justify-between mt-[3cm] gap-8 relative z-10">
                                     <div className="w-[45%] border-t border-black text-center pt-2 text-[10pt]">
                                         <strong>{data.companyName}</strong><br/>CONTRATADA
                                     </div>

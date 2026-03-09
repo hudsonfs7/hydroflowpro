@@ -301,6 +301,15 @@ export interface ContractData {
     date: string;
     companyName: string;
     clientName: string;
+    organization?: Organization;
+    isDraft?: boolean;
+    budgetRef?: {
+        number: string;
+        date: string;
+        totalValue: number;
+        items: BudgetItem[];
+        paymentStages?: PaymentStage[];
+    };
 }
 
 // --- BUDGET TYPES ---
