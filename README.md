@@ -1,85 +1,55 @@
-# 💧 HF HydroFlow
+<div align="center" style="background-color: #020617; padding: 60px 20px; border-radius: 16px; margin-bottom: 24px;">
+  <table width="100%" style="border: none; background-color: transparent;">
+    <tr>
+      <td align="center" style="border: none; background-color: transparent;">
+        <div style="width: 96px; height: 96px; background-color: #3b82f6; background-image: linear-gradient(to bottom right, #3b82f6, #4f46e5); border-radius: 24px; margin: 0 auto 24px auto; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 10px 25px rgba(59, 130, 246, 0.5);">
+          <h1 style="font-size: 36px; font-weight: 900; font-style: italic; color: white; margin: 0; line-height: 96px; letter-spacing: -2px;">HF</h1>
+        </div>
+        <h1 style="font-size: 48px; font-weight: 900; margin: 0 0 16px 0; color: white; font-family: system-ui, sans-serif; letter-spacing: -1px;">
+          HydroFlow Pro
+        </h1>
+        <hr style="width: 48px; border: 1px solid #475569; margin: 0 auto 16px auto;" />
+        <p style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.3em; color: #94a3b8; font-family: system-ui, sans-serif; margin: 0; font-weight: 600;">
+          by Hudson Souza
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>
 
-![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
-![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
-![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
-![Firebase](https://img.shields.io/badge/firebase-ffca28?style=for-the-badge&logo=firebase&logoColor=black)
+Plataforma web para simulação, dimensionamento e gestão de projetos de redes hidráulicas.
 
-**HF HydroFlow** é uma plataforma web avançada para simulação, dimensionamento e gestão de projetos de redes hidráulicas. Desenvolvida para engenheiros e projetistas, a ferramenta une cálculos rigorosos a uma interface interativa baseada em mapas.
+## 🚀 Funcionalidades
 
----
+- **Modelagem Visual:** Desenho de redes de abastecimento direto no mapa (Leaflet).
+- **Cálculo Hidráulico:** Métodos Darcy-Weisbach e Hazen-Williams, com solver GGA para redes malhadas.
+- **Automação de Documentos:** Geração de memoriais descritivos, orçamentos e contratos em PDF.
+- **Nuvem:** Sincronização em tempo real e gestão de projetos via Firebase.
 
-## ✨ Principais Funcionalidades
+## 🛠️ Tecnologias
 
-### 🗺️ Modelagem Interativa
-* **Design no Mapa:** Desenhe redes de abastecimento diretamente sobre mapas interativos (Leaflet).
-* **Elementos Hidráulicos:** Suporte completo para Nós de Demanda, Reservatórios, Poços e Bombas.
-* **Elevação Automática:** Integração com APIs de topografia para captura automática de cotas de terreno.
-* **Importação CAD:** Suporte para leitura de arquivos DXF para agilizar o traçado da rede.
+- **Frontend:** React 18, TypeScript, Tailwind CSS, Vite
+- **Mapas:** Leaflet, React-Leaflet
+- **Backend:** Firebase (Firestore, Auth)
 
-### 🧮 Motor de Cálculo Avançado
-* **Métodos de Perda de Carga:** Darcy-Weisbach e Hazen-Williams.
-* **Cálculo de Atrito:** Colebrook-White, Swamee-Jain.
-* **Solver:** Algoritmo Global Gradient Algorithm (GGA) para simulação de redes malhadas e ramificadas.
-* **Análise de Bombas:** Curvas características e determinação do ponto de operação.
+## ⚙️ Como Executar
 
-### 📄 Geração Automática de Documentos
-* **Memorial Descritivo:** Geração de relatórios técnicos completos nos padrões da ABNT, incluindo tabelas de resultados e premissas de cálculo.
-* **Orçamentos:** Criação de propostas comerciais detalhadas com base no quantitativo de materiais (tubulações, conexões, etc.).
-* **Contratos:** Geração e edição de minutas contratuais vinculadas aos dados do empreendimento.
-
-### ☁️ Gestão na Nuvem
-* **Projetos Salvos:** Sincronização em tempo real com o Firebase.
-* **Gestão de Organizações:** Controle de acesso e compartilhamento de projetos entre membros da mesma equipe.
-* **Versionamento:** Mantenha o histórico e os metadados dos seus projetos seguros na nuvem.
-
----
-
-## 🛠️ Tecnologias Utilizadas
-
-* **Frontend:** React 18, TypeScript, Vite
-* **Estilização:** Tailwind CSS, Lucide Icons
-* **Mapas:** Leaflet, React-Leaflet
-* **Backend/BaaS:** Firebase (Firestore, Auth)
-* **Geração de Documentos:** React-Markdown, HTML-to-PDF (via impressão nativa)
-
----
-
-## 🚀 Como Executar o Projeto
-
-1. **Clone o repositório**
-   ```bash
-   git clone https://github.com/seu-usuario/hf-hydroflow.git
-   cd hf-hydroflow
-   ```
-
-2. **Instale as dependências**
+1. Instale as dependências:
    ```bash
    npm install
    ```
 
-3. **Configure as Variáveis de Ambiente**
-   Crie um arquivo `.env` na raiz do projeto com as suas credenciais do Firebase:
+2. Configure o `.env` com suas credenciais do Firebase:
    ```env
-   VITE_FIREBASE_API_KEY=sua_api_key
-   VITE_FIREBASE_AUTH_DOMAIN=seu_auth_domain
-   VITE_FIREBASE_PROJECT_ID=seu_project_id
-   VITE_FIREBASE_STORAGE_BUCKET=seu_storage_bucket
-   VITE_FIREBASE_MESSAGING_SENDER_ID=seu_sender_id
-   VITE_FIREBASE_APP_ID=seu_app_id
+   VITE_FIREBASE_API_KEY=...
+   VITE_FIREBASE_AUTH_DOMAIN=...
+   VITE_FIREBASE_PROJECT_ID=...
    ```
 
-4. **Inicie o Servidor de Desenvolvimento**
+3. Inicie o servidor local:
    ```bash
    npm run dev
    ```
-   O aplicativo estará disponível em `http://localhost:3000`.
 
 ---
-
-## 📝 Licença
-
-Este projeto é de uso restrito e proprietário. Todos os direitos reservados.
-
----
-*Desenvolvido com 💙 para revolucionar a engenharia hidráulica.*
+*Uso restrito e proprietário. Todos os direitos reservados.*
