@@ -29,6 +29,7 @@ export interface VisualizationSettings {
   mode: 'fixed' | 'adaptive';
   baseScale: number;
   adaptiveStrength: number;
+  reportMode?: boolean;
 }
 
 // --- AUTH TYPES ---
@@ -93,6 +94,7 @@ export interface ProjectMetadata {
   organizationId?: string;
   createdBy?: string;
   name: string;
+  studyName?: string;
   company: string;
   companyCnpj?: string;
   consultant?: string;
@@ -122,6 +124,7 @@ export interface ProjectMetadata {
 
   proposals?: Proposal[];
   acceptedProposalId?: string;
+  savedContract?: ContractData;
 }
 
 export interface PipeDiameterDefinition {
@@ -159,6 +162,7 @@ export interface PumpConfig {
   efficiency?: number;
   motorPower?: number;
   speed?: number;
+  poles?: number;
   enabled: boolean;
 }
 

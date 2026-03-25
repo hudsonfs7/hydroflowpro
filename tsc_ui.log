@@ -1,0 +1,20 @@
+App.tsx(892,41): error TS2367: This comparison appears to be unintentional because the types 'CalcMethod' and '"darcy-weisbach"' have no overlap.
+App.tsx(894,48): error TS2367: This comparison appears to be unintentional because the types 'CalcMethod' and '"darcy-weisbach"' have no overlap.
+App.tsx(895,53): error TS2367: This comparison appears to be unintentional because the types 'CalcMethod' and '"darcy-weisbach"' have no overlap.
+App.tsx(1042,198): error TS2322: Type '(pipeId: string, index: number, count: number, fittingId: string) => void' is not assignable to type '(pipeId: string, fittingId: string, data: Partial<Fitting>) => void'.
+  Target signature provides too few arguments. Expected 4 or more, but got 3.
+App.tsx(1043,54): error TS2740: Type '{ selectedNode: Node; updateNode: (id: string, updates: Partial<Node>) => void; handleDeleteNode: (nodeId: string) => void; closeEditor: () => void; unitSystem: UnitSystem; flowUnit: FlowUnit; fetchElevation: (lat: number, lng: number) => Promise<...>; isMapMode: boolean; coordFormat: "decimal" | "utm"; }' is missing the following properties from type 'EditorPanelProps': updatePipe, materials, addFitting, updateFitting, and 5 more.
+App.tsx(1076,219): error TS2322: Type '(pipeId: string, index: number, count: number, fittingId: string) => void' is not assignable to type '(pipeId: string, fittingId: string, data: Partial<Fitting>) => void'.
+  Target signature provides too few arguments. Expected 4 or more, but got 3.
+App.tsx(1076,568): error TS2740: Type '{ selectedNode: Node; updateNode: (id: string, updates: Partial<Node>) => void; handleDeleteNode: (nodeId: string) => void; closeEditor: () => void; unitSystem: UnitSystem; flowUnit: FlowUnit; fetchElevation: (lat: number, lng: number) => Promise<...>; isMapMode: boolean; coordFormat: "decimal" | "utm"; }' is missing the following properties from type 'EditorPanelProps': updatePipe, materials, addFitting, updateFitting, and 5 more.
+components/CommonUI.tsx(156,3): error TS2612: Property 'state' will overwrite the base property in 'Component<ErrorBoundaryProps, ErrorBoundaryState, any>'. If this is intentional, add an initializer. Otherwise, add a 'declare' modifier or remove the redundant declaration.
+components/EditorPanel.tsx(277,44): error TS2554: Expected 2 arguments, but got 1.
+components/EditorPanel.tsx(286,42): error TS2554: Expected 2 arguments, but got 1.
+components/EditorPanel.tsx(292,208): error TS2554: Expected 3 arguments, but got 4.
+components/EditorPanel.tsx(293,177): error TS2554: Expected 3 arguments, but got 4.
+components/FlexTableModal.tsx(67,126): error TS2345: Argument of type 'string' is not assignable to parameter of type 'FlowUnit'.
+components/UserManagerModal.tsx(150,31): error TS2345: Argument of type '{ role: "user"; password: string; id?: string; username?: string; organizationId?: string; }' is not assignable to parameter of type 'Omit<User, "id">'.
+  Property 'username' is optional in type '{ role: "user"; password: string; id?: string; username?: string; organizationId?: string; }' but required in type 'Omit<User, "id">'.
+services/contractService.ts(21,104): error TS2304: Cannot find name 'Organization'.
+services/reportService.ts(6,9): error TS2367: This comparison appears to be unintentional because the types 'FlowUnit' and '"L/s"' have no overlap.
+services/reportService.ts(7,14): error TS2367: This comparison appears to be unintentional because the types 'FlowUnit' and '"m³/day"' have no overlap.

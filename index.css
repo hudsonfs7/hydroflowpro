@@ -88,4 +88,28 @@ html, body {
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }
+
+  /* 
+     === REGRA GERAL DE FONTES E ESTILOS (Design Não-Intrusivo) ===
+     As overrides abaixo normalizam o uso abusivo de classes do Tailwind 
+     para manter o layout sofisticado sem quebrar componentes nativos 
+  */
+
+  /* 1. Normaliza as fontes excessivamente pretas (weight 900) para bold padrão (weight 700) */
+  .font-black {
+    font-weight: 700 !important;
+  }
+
+  /* 2. Solta as fontes espremidas mantendo o legível natural */
+  .tracking-tight, 
+  .tracking-tighter {
+    letter-spacing: normal !important;
+  }
+
+  /* 3. Limita o distanciamento excessivo transformando num wide elegante */
+  .tracking-widest,
+  .tracking-\[0\.2em\], 
+  .tracking-\[0\.3em\] {
+    letter-spacing: 0.05em !important;
+  }
 }

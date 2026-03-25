@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
-  UnitSystem, CalcMethod, FrictionMethod, Node, PipeSegment, CalculationResult, FlowUnit, SolverType, LabelPosition, VisualizationSettings, Vertex, GeoPosition, MapAnnotation, AnnotationType, LabelMode, NodeType, MDConfig, ProjectMetadata, User
+  UnitSystem, CalcMethod, FrictionMethod, Node, PipeSegment, CalculationResult, FlowUnit, SolverType, LabelPosition, VisualizationSettings, Vertex, GeoPosition, MapAnnotation, AnnotationType, LabelMode, NodeType, MDConfig, ProjectMetadata, User, MapStyle, CoordinateFormat
 } from './types';
 import { solveNetwork, convertFlowFromSI, convertFlowToSI, calculateGeoDistance, getPumpOrientations } from './services/calcService';
 import { ErrorBoundary, useClickOutside, ModalContainer, SmartNumberInput, InputGroup } from './components/CommonUI';
@@ -32,6 +32,7 @@ const QuickCalcModal = React.lazy(() => import('./components/QuickCalcModal').th
 const CreateProjectModal = React.lazy(() => import('./components/CreateProjectModal').then(m => ({ default: m.CreateProjectModal })));
 const ProjectManagerModal = React.lazy(() => import('./components/ProjectManagerModal').then(m => ({ default: m.ProjectManagerModal })));
 const FinancialManagerModal = React.lazy(() => import('./components/FinancialManagerModal').then(m => ({ default: m.FinancialManagerModal })));
+const ProjectSelectorModal = React.lazy(() => import('./components/ProjectSelectorModal').then(m => ({ default: m.ProjectSelectorModal })));
 const LoginModal = React.lazy(() => import('./components/LoginModal').then(m => ({ default: m.LoginModal })));
 const UserManagerModal = React.lazy(() => import('./components/UserManagerModal').then(m => ({ default: m.UserManagerModal })));
 const BudgetEditorModal = React.lazy(() => import('./components/BudgetEditorModal').then(m => ({ default: m.BudgetEditorModal })));
@@ -116,6 +117,7 @@ export default function App() {
   
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
+  const [isProjectSelectorOpen, setIsProjectSelectorOpen] = useState(false);
   const [isFinancialManagerOpen, setIsFinancialManagerOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -155,7 +157,7 @@ export default function App() {
   const [calcWarning, setCalcWarning] = useState<string | null>(null);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
 
-  const [unitSystem] = useState<UnitSystem>(UnitSystem.SI);
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(UnitSystem.SI);
   const [flowUnit, setFlowUnit] = useState<FlowUnit>('l/s');
   const [calcMethod, setCalcMethod] = useState<CalcMethod>(CalcMethod.DARCY_WEISBACH);
   const [frictionMethod, setFrictionMethod] = useState<FrictionMethod>(FrictionMethod.COLEBROOK_WHITE);
@@ -233,10 +235,10 @@ export default function App() {
 
   const fetchElevation = useCallback(async (lat: number, lng: number): Promise<number | null> => {
     try {
-        const response = await fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`);
+        const response = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`);
         const data = await response.json();
-        if (data && data.results && data.results.length > 0) {
-            return data.results[0].elevation;
+        if (data && data.elevation && data.elevation.length > 0) {
+            return data.elevation[0];
         }
         return null;
     } catch (e) {
@@ -402,11 +404,18 @@ export default function App() {
       streetLayer.addTo(map); setMapInstance(map); setCurrentZoom(map.getZoom());
       return () => { map.remove(); setMapInstance(null); };
     }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (!mapInstance) return;
-    mapInstance.on('movestart', () => setIsPanning(true)); mapInstance.on('moveend', () => setIsPanning(false));
+    const handleMoveStart = () => setIsPanning(true);
+    const handleMoveEnd = () => setIsPanning(false);
+    mapInstance.on('movestart', handleMoveStart); 
+    mapInstance.on('moveend', handleMoveEnd);
+    return () => {
+      mapInstance.off('movestart', handleMoveStart);
+      mapInstance.off('moveend', handleMoveEnd);
+    };
   }, [mapInstance]);
 
   useEffect(() => {
@@ -504,7 +513,7 @@ export default function App() {
   useEffect(() => {
       if (!mapInstance) return;
       const handler = (e: any) => handleCanvasClickRef.current(e);
-      const zoomHandler = () => { setCurrentZoom(mapInstance.getZoom()); updateScreenPositions(); }
+      const zoomHandler = () => { setCurrentZoom(mapInstance.getZoom()); }
       mapInstance.on('click', handler); mapInstance.on('zoom', zoomHandler);
       return () => { mapInstance.off('click', handler); mapInstance.off('zoom', zoomHandler); };
   }, [mapInstance]);
@@ -631,18 +640,19 @@ export default function App() {
         setIsLoginOpen(true);
         return;
     }
+    
+    if (!projectMetadata._id) {
+        showValidationToast("Erro: O projeto atual não possui vínculo no banco. Volte ao seletor e crie o empreendimento lá primeiro.");
+        return;
+    }
+
     showValidationToast("Salvando na nuvem...");
     try {
         const proj = { version: "1.5", metadata: projectMetadata, date: new Date().toISOString(), nodes, pipes, demandGroups, annotations, annotationGroups, mdConfig, settings: { unitSystem, flowUnit, calcMethod, frictionMethod, solverType, globalC, globalRoughness, mapStyle, mapOpacity, coordFormat, visSettings, nodeLabelPos, nodeLabelOffset } };
-        if (projectMetadata._id) {
-            await updateProjectInCloud(projectMetadata._id, projectMetadata.name, proj);
-            showValidationToast("Projeto atualizado na nuvem com sucesso!");
-        } else {
-            const orgId = currentUser.organizationId || 'legacy';
-            const newId = await saveProjectToCloud(projectMetadata.name, proj, orgId);
-            setProjectMetadata(prev => prev ? ({ ...prev, _id: newId, organizationId: orgId }) : null);
-            showValidationToast("Projeto salvo na nuvem com sucesso!");
-        }
+        
+        await updateProjectInCloud(projectMetadata._id, projectMetadata.name, proj);
+        showValidationToast("Empreendimento atualizado na nuvem com sucesso!");
+        
         setManagerRefreshKey(prev => prev + 1);
         setShowProjectMenu(false);
     } catch (err: any) {
@@ -663,6 +673,7 @@ export default function App() {
   const handleLogout = () => {
       setCurrentUser(null);
       setIsProjectManagerOpen(false);
+      setIsProjectSelectorOpen(false);
       setIsFinancialManagerOpen(false);
       setProjectMetadata(null);
       showValidationToast("Você saiu do sistema.");
@@ -671,7 +682,7 @@ export default function App() {
 
   const renderActiveModal = () => {
     if (isLoginOpen) {
-        return <LoginModal onClose={() => setIsLoginOpen(false)} onLoginSuccess={(user) => { setCurrentUser(user); setIsLoginOpen(false); setIsProjectManagerOpen(true); showValidationToast(`Bem-vindo, ${user.username}`); }} />;
+        return <LoginModal onClose={() => setIsLoginOpen(false)} onLoginSuccess={(user) => { setCurrentUser(user); setIsLoginOpen(false); setIsProjectSelectorOpen(true); showValidationToast(`Bem-vindo, ${user.username}`); }} />;
     }
 
     if (!activeModal) return null;
@@ -687,7 +698,12 @@ export default function App() {
             initialData={initData}
             userOrgName={currentOrgName} 
             currentUser={currentUser} 
-            onClose={() => setActiveModal(null)} 
+            onClose={() => {
+                setActiveModal(null);
+                if (!projectMetadata) {
+                    setIsProjectSelectorOpen(true);
+                }
+            }} 
             onDelete={isEditingCloudProject ? async () => {
                  try {
                      if (!initData._id) throw new Error("ID do projeto não encontrado.");
@@ -720,6 +736,16 @@ export default function App() {
                         console.error(e);
                         showValidationToast("Erro ao salvar.");
                     }
+                } else if (!projectMetadata) {
+                    // if they created the first project, we can auto-load it
+                    try {
+                        const orgId = data.organizationId || currentUser?.organizationId || 'legacy';
+                        const proj = { version: "1.5", metadata: metadataWithId, date: new Date().toISOString(), nodes: [], pipes: [], demandGroups: [] };
+                        const newId = await saveProjectToCloud(data.name, proj, orgId);
+                        setProjectMetadata({ ...metadataWithId, _id: newId });
+                        setNodes([]); setPipes([]); setDemandGroups([]);
+                        showValidationToast("Novo empreendimento criado e carregado!");
+                    } catch(e) {}
                 }
                 setActiveModal(null); 
             }} 
@@ -771,8 +797,28 @@ export default function App() {
             fetchElevation={fetchElevation} 
           />
         ) : null;
-      case 'PUMP_EDITOR':
+      case 'PUMP_EDITOR': {
         const pumpNode = nodes.find(n => n.id === activeModal.data);
+        let actualFlow: number | undefined;
+        let actualHead: number | undefined;
+
+        if (pumpNode && snapshot) {
+            const suctionId = pumpSuctionMap.get(pumpNode.id);
+            const suctionRes = suctionId ? nodeResultsDisplay.get(suctionId) : undefined;
+            const res = nodeResultsDisplay.get(pumpNode.id);
+            
+            let Q_recalque = 0;
+            pipes.filter(p => (p.startNodeId === pumpNode.id || p.endNodeId === pumpNode.id) && (p.startNodeId !== suctionId && p.endNodeId !== suctionId)).forEach(p => {
+                const pr = snapshot.results.find(r => r.segmentId === p.id);
+                if(pr) Q_recalque += Math.abs(convertFlowFromSI(pr.flowRate, flowUnit));
+            });
+            
+            actualFlow = Q_recalque;
+            const hMontante = suctionRes?.cp || pumpNode.elevation;
+            const hJusante = res?.cp || pumpNode.elevation;
+            actualHead = Math.max(0, hJusante - hMontante);
+        }
+
         return pumpNode ? (
           <PumpEditorModal 
             node={pumpNode} 
@@ -780,8 +826,11 @@ export default function App() {
             onClose={() => setActiveModal(null)} 
             onDelete={() => { removeNode(pumpNode.id); setActiveModal(null); }} 
             flowUnit={flowUnit} 
+            actualFlow={actualFlow}
+            actualHead={actualHead}
           />
         ) : null;
+      }
       case 'BUDGET':
         if (!projectMetadata) return null;
         return (
@@ -800,7 +849,25 @@ export default function App() {
   return (
     <ErrorBoundary>
     {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
-    <div className={`flex flex-col h-[100dvh] w-full bg-slate-50 touch-none overflow-hidden pb-[64px] md:pb-0 ${isDrawMode || activeAnnotationId || pendingNodeType || drawingDraft ? 'cursor-crosshair' : ''} ${isPanning ? 'is-panning' : ''}`} onMouseMove={handlePointerMove} onTouchMove={handlePointerMove} onMouseUp={handlePointerUp} onTouchEnd={handlePointerUp}>
+    
+    {!showSplash && !currentUser && (
+      <div className="fixed inset-0 z-[8000] bg-slate-950 flex items-center justify-center p-4 overflow-hidden">
+        <div className="absolute w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[120px]" />
+        <React.Suspense fallback={<div className="text-white font-bold animate-pulse italic">Carregando Acesso...</div>}>
+          <LoginModal 
+            onClose={() => {}} 
+            onLoginSuccess={(user) => { 
+                setCurrentUser(user); 
+                setIsProjectSelectorOpen(true);
+                showValidationToast(`Bem-vindo, ${user.username}`); 
+            }} 
+          />
+        </React.Suspense>
+      </div>
+    )}
+
+    {currentUser && (
+      <div className={`flex flex-col h-[100dvh] w-full bg-slate-50 touch-none overflow-hidden pb-[64px] md:pb-0 ${isDrawMode || activeAnnotationId || pendingNodeType || drawingDraft ? 'cursor-crosshair' : ''} ${isPanning ? 'is-panning' : ''}`} onMouseMove={handlePointerMove} onTouchMove={handlePointerMove} onMouseUp={handlePointerUp} onTouchEnd={handlePointerUp}>
       <header className="h-14 shrink-0 bg-white border-b border-slate-200 px-4 flex items-center justify-between shadow-sm z-50 relative">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center text-white font-bold text-sm">HF</div>
@@ -812,6 +879,11 @@ export default function App() {
         <div className="flex items-center gap-1 md:gap-2">
           <button onClick={() => setActiveModal({ type: 'QUICK_CALC' })} className="flex items-center justify-center bg-slate-800 text-white w-8 h-8 rounded-md hover:bg-slate-900 transition-all" title="Calculadora Rápida"><CalculatorIcon /></button>
           
+          <button onClick={handleCloudSave} disabled={!projectMetadata} className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md font-bold text-xs transition-all shadow-sm border ${projectMetadata ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 hover:shadow-md' : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'}`} title="Salvar Dimensionamento (Nuvem)">
+             <SaveIcon />
+             <span className="hidden lg:inline">Salvar Projeto</span>
+          </button>
+
           <div ref={projectMenuRef} className="relative">
             <button onClick={() => setShowProjectMenu(!showProjectMenu)} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-md font-medium text-xs"><FolderIcon /> <span className="hidden md:inline">Projeto</span></button>
             {showProjectMenu && (
@@ -833,8 +905,68 @@ export default function App() {
                         <button onClick={handleProjectsClick} className="flex items-center gap-2 px-4 py-2.5 hover:bg-blue-50 text-blue-700 text-xs text-left w-full font-bold transition-colors"><UserIcon /> Entrar / Login</button>
                     )}
                     <div className="px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 border-y border-slate-100">Arquivo Local</div>
-                    <button onClick={() => { setShowProjectMenu(false); const proj = { version: "1.5", metadata: projectMetadata, date: new Date().toISOString(), nodes, pipes, demandGroups, annotations, annotationGroups, mdConfig, settings: { unitSystem, flowUnit, calcMethod, frictionMethod, solverType, globalC, globalRoughness, mapStyle, mapOpacity, coordFormat, visSettings, nodeLabelPos, nodeLabelOffset } }; const blob = new Blob([JSON.stringify(proj, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `hydroflow-${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(link); link.click(); document.body.removeChild(link); }} className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700 text-xs text-left w-full transition-colors"><SaveIcon /> Salvar (.json)</button>
-                    <label className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700 text-xs cursor-pointer w-full transition-colors"><UploadIcon /> Abrir (.json) <input type="file" accept=".json" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const data = JSON.parse(ev.target?.result as string); if (data.metadata) setProjectMetadata(data.metadata); if (data.nodes) setNodes(data.nodes); if (data.pipes) setPipes(data.pipes); if (data.mdConfig) setMdConfig(data.mdConfig); setSnapshot(null); showValidationToast("Projeto carregado!"); } catch(err) {} }; reader.readAsText(file); setShowProjectMenu(false); }} /></label>
+                    <button onClick={() => { 
+                        setShowProjectMenu(false); 
+                        const calculationSummary = {
+                            studyName: projectMetadata?.studyName || projectMetadata?.name || 'Não identificado',
+                            calcMethod: calcMethod === 'darcy-weisbach' ? 'Darcy-Weisbach' : 'Hazen-Williams',
+                            solverEngine: solverType,
+                            globalCoefficient: calcMethod === 'darcy-weisbach' ? globalRoughness || 'Padrão do material' : globalC || 'Padrão do material',
+                            isCustomCoefficient: !!(calcMethod === 'darcy-weisbach' ? globalRoughness : globalC)
+                        };
+                        const proj = { version: "1.5", metadata: projectMetadata, calculationSummary, date: new Date().toISOString(), nodes, pipes, demandGroups, annotations, annotationGroups, mdConfig, settings: { unitSystem, flowUnit, calcMethod, frictionMethod, solverType, globalC, globalRoughness, mapStyle, mapOpacity, coordFormat, visSettings, nodeLabelPos, nodeLabelOffset } }; 
+                        const blob = new Blob([JSON.stringify(proj, null, 2)], { type: 'application/json' }); 
+                        const url = URL.createObjectURL(blob); 
+                        const link = document.createElement('a'); 
+                        link.href = url; 
+                        link.download = `hydroflow-${new Date().toISOString().slice(0,10)}.json`; 
+                        document.body.appendChild(link); 
+                        link.click(); 
+                        document.body.removeChild(link); 
+                    }} className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700 text-xs text-left w-full transition-colors"><SaveIcon /> Salvar (.json)</button>
+                    <label className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700 text-xs cursor-pointer w-full transition-colors">
+                        <UploadIcon /> Abrir (.json) 
+                        <input type="file" accept=".json" className="hidden" onChange={(e) => { 
+                            const file = e.target.files?.[0]; 
+                            if (!file) return; 
+                            const reader = new FileReader(); 
+                            reader.onload = (ev) => { 
+                                try { 
+                                    const data = JSON.parse(ev.target?.result as string); 
+                                    if (data.metadata) setProjectMetadata(data.metadata); 
+                                    if (data.nodes) setNodes(data.nodes); 
+                                    if (data.pipes) setPipes(data.pipes); 
+                                    if (data.demandGroups) setDemandGroups(data.demandGroups);
+                                    if (data.annotations) setAnnotations(data.annotations);
+                                    if (data.annotationGroups) setAnnotationGroups(data.annotationGroups);
+                                    if (data.mdConfig) setMdConfig(data.mdConfig); 
+                                    if (data.settings) {
+                                        if (data.settings.unitSystem) setUnitSystem(data.settings.unitSystem as UnitSystem);
+                                        if (data.settings.flowUnit) setFlowUnit(data.settings.flowUnit as FlowUnit);
+                                        if (data.settings.calcMethod) setCalcMethod(data.settings.calcMethod as CalcMethod);
+                                        if (data.settings.frictionMethod) setFrictionMethod(data.settings.frictionMethod as FrictionMethod);
+                                        if (data.settings.solverType) setSolverType(data.settings.solverType as SolverType);
+                                        if (data.settings.globalC !== undefined) setGlobalC(data.settings.globalC);
+                                        if (data.settings.globalRoughness !== undefined) setGlobalRoughness(data.settings.globalRoughness);
+                                        if (data.settings.mapStyle) setMapStyle(data.settings.mapStyle as MapStyle);
+                                        if (data.settings.mapOpacity !== undefined) setMapOpacity(data.settings.mapOpacity);
+                                        if (data.settings.coordFormat) setCoordFormat(data.settings.coordFormat as CoordinateFormat);
+                                        if (data.settings.visSettings) setVisSettings(data.settings.visSettings);
+                                        if (data.settings.nodeLabelPos) setNodeLabelPos(data.settings.nodeLabelPos as LabelPosition);
+                                        if (data.settings.nodeLabelOffset !== undefined) setNodeLabelOffset(data.settings.nodeLabelOffset);
+                                    }
+                                    setSnapshot(null); 
+                                    setActiveModal(null);
+                                    setShowSidebar(false);
+                                    showValidationToast("Projeto carregado com sucesso!"); 
+                                } catch(err) {
+                                    showValidationToast("Erro ao carregar projeto.");
+                                } 
+                            }; 
+                            reader.readAsText(file); 
+                            setShowProjectMenu(false); 
+                        }} />
+                    </label>
                     <div className="px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 border-y border-slate-100">Exportar</div>
                     <button onClick={() => { const dxf = generateDXF(nodes, pipes, materials, snapshot?.nodeResults, snapshot?.results, annotations, isMapMode, unitSystem, flowUnit); const blob = new Blob([JSON.stringify(dxf)], { type: 'application/dxf' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `hydroflow-export.dxf`; document.body.appendChild(link); link.click(); document.body.removeChild(link); setShowProjectMenu(false); }} className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700 text-xs text-left w-full transition-colors"><FileCadIcon /> Exportar para CAD (DXF)</button>
                 </div>
@@ -859,14 +991,20 @@ export default function App() {
       )}
 
       <div className="flex-1 relative overflow-hidden">
-        <div className="absolute inset-0 z-0 bg-slate-100">
+        <div id="network-map-container" className="absolute inset-0 z-0 bg-slate-100">
             <div ref={mapRef} className="absolute inset-0 z-0" style={{ backgroundColor: mapStyle === 'none' ? '#f8fafc' : undefined }} />
             <div className={`absolute top-1 z-20 pointer-events-none transition-transform duration-300 left-1/2 -translate-x-1/2 w-[calc(100%-36px)] max-w-sm md:w-full md:left-4 md:translate-x-0 ${isLeftSidebarOpen ? 'md:translate-x-64 lg:translate-x-80' : 'md:translate-x-0'}`}>
                 <MapControls mapStyle={mapStyle} setMapStyle={setMapStyle} mapOpacity={mapOpacity} setMapOpacity={setMapOpacity} coordFormat={coordFormat} setCoordFormat={setCoordFormat} searchQuery={searchQuery} setSearchQuery={setSearchQuery} handleSearch={() => { fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`).then(res => res.json()).then(data => { if(data && data.length > 0) { const lat = parseFloat(data[0].lat); const lon = parseFloat(data[0].lon); mapInstance?.setView([lat, lon], 18); } }); }} />
             </div>
+            {projectMetadata && (
+                <div className="absolute bottom-6 right-6 z-[400] bg-white/90 backdrop-blur-sm px-4 py-2 rounded-xl shadow-[0_5px_15px_rgba(0,0,0,0.15)] border border-slate-200 text-xs font-bold text-slate-700 flex items-center gap-2 pointer-events-none transition-all animate-fade-in shadow-blue-500/20">
+                    <div className="text-blue-500"><FolderIcon /></div>
+                    <span className="uppercase tracking-wide">{projectMetadata.name}</span>
+                </div>
+            )}
             <MapCanvasLayer annotations={annotations} groups={annotationGroups} mapInstance={mapInstance} globalScale={computedScale} />
             <svg ref={svgRef} className="absolute inset-0 z-[5] w-full h-full pointer-events-none">
-               <MapSvgLayer annotations={annotations} groups={annotationGroups} mapInstance={mapInstance} globalScale={computedScale} activeAnnotationId={activeAnnotationId} selectedAnnotationId={selectedAnnotationId} handlers={{ onAnnotationClick: (id) => { setSelectedAnnotationId(id); setSelectedPipeId(null); setSelectedNodeId(null); }, onVertexMouseDown: (e, id, idx) => { e.stopPropagation(); setDragAnnVertex({ annId: id, index: idx }); }, onLabelMouseDown: (e, id) => { e.stopPropagation(); setDragAnnLabel(id); } }} />
+               <MapSvgLayer annotations={annotations} groups={annotationGroups} mapInstance={mapInstance} globalScale={computedScale} activeAnnotationId={activeAnnotationId} selectedAnnotationId={selectedAnnotationId} reportMode={visSettings.reportMode} handlers={{ onAnnotationClick: (id) => { setSelectedAnnotationId(id); setSelectedPipeId(null); setSelectedNodeId(null); }, onVertexMouseDown: (e, id, idx) => { e.stopPropagation(); setDragAnnVertex({ annId: id, index: idx }); }, onLabelMouseDown: (e, id) => { e.stopPropagation(); setDragAnnLabel(id); } }} />
                {drawingDraft && drawingDraft.points.length > 0 && mapInstance && (
                     <g className="drawing-draft opacity-70">
                         {drawingDraft.type === 'area' ? (
@@ -896,7 +1034,7 @@ export default function App() {
                {pipes.map(pipe => {
                   const start = nodes.find(n => n?.id === pipe.startNodeId); const end = nodes.find(n => n?.id === pipe.endNodeId);
                   if(!start || !end) return null;
-                  return <NetworkPipe key={pipe.id} pipe={pipe} startNode={start} endNode={end} isSelected={selectedPipeId === pipe.id || demandSelection.has(pipe.id)} material={materials.find(m => m.id === pipe.materialId)} result={snapshot?.results.find(r => r.segmentId === pipe.id)} unitSystem={unitSystem} flowUnit={flowUnit} demandDecimals={demandDecimals} showDemandValues={showDemandTool} globalScale={computedScale} handlers={{ onClick: (e, id) => { e.stopPropagation(); setSelectedPipeId(id); setSelectedNodeId(null); setSelectedAnnotationId(null); }, onDoubleClick: (e, id) => { e.stopPropagation(); openProperties('pipe', id); }, onPipeMouseDown: (e, id) => handlePointerDown(e, 'pipe', id), onVertexMouseDown: (e, pid, idx) => { e.stopPropagation(); setDragVertex({ pipeId: pid, index: idx }); } }} />;
+                  return <NetworkPipe key={pipe.id} pipe={pipe} startNode={start} endNode={end} isSelected={selectedPipeId === pipe.id || demandSelection.has(pipe.id)} material={materials.find(m => m.id === pipe.materialId)} result={snapshot?.results.find(r => r.segmentId === pipe.id)} unitSystem={unitSystem} flowUnit={flowUnit} demandDecimals={demandDecimals} showDemandValues={showDemandTool} globalScale={computedScale} reportMode={visSettings.reportMode} handlers={{ onClick: (e, id) => { e.stopPropagation(); setSelectedPipeId(id); setSelectedNodeId(null); setSelectedAnnotationId(null); }, onDoubleClick: (e, id) => { e.stopPropagation(); openProperties('pipe', id); }, onPipeMouseDown: (e, id) => handlePointerDown(e, 'pipe', id), onVertexMouseDown: (e, pid, idx) => { e.stopPropagation(); setDragVertex({ pipeId: pid, index: idx }); } }} />;
                })}
                {nodes.map(node => {
                   const res = nodeResultsDisplay.get(node.id);
@@ -912,7 +1050,7 @@ export default function App() {
                       const pumpExtra = { H: snapshot ? Math.max(0, hJusante - hMontante) : 0, Q: Q_recalque, Pm: suctionRes?.p || 0 };
                       return <NetworkPump key={node.id} node={node} isSelected={selectedNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} suctionNodeId={suctionId} nodesContext={nodes} pumpExtraData={pumpExtra} handlers={hnd} />;
                   }
-                  return <NetworkJunction key={node.id} node={node} isSelected={selectedNodeId === node.id} isDrawStart={drawStartNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} handlers={hnd} />;
+                  return <NetworkJunction key={node.id} node={node} isSelected={selectedNodeId === node.id} isDrawStart={drawStartNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} reportMode={visSettings.reportMode} handlers={hnd} />;
                })}
             </svg>
         </div>
@@ -960,7 +1098,7 @@ export default function App() {
            </div>
            <div className="flex-1 p-4 overflow-y-auto">
                <React.Suspense fallback={null}>
-                   {sidebarMode === 'results' ? <ResultsContent calcError={calcError} calcWarning={calcWarning} results={snapshot?.results || []} nodes={snapshot?.nodes || []} pipes={snapshot?.pipes || []} materials={materials} nodeResults={snapshot?.nodeResults} flowUnit={flowUnit} unitSystem={unitSystem} selectedPipeId={selectedPipeId} setSelectedPipeId={setSelectedPipeId} setSelectedNodeId={setSelectedNodeId} setShowMobileResults={setShowSidebar} onOpenTable={() => setActiveModal({ type: 'FLEX_TABLE' })} calcMethod={calcMethod} />
+                   {sidebarMode === 'results' ? <ResultsContent calcError={calcError} calcWarning={calcWarning} results={snapshot?.results || []} nodes={snapshot?.nodes || []} pipes={snapshot?.pipes || []} materials={materials} nodeResults={snapshot?.nodeResults} flowUnit={flowUnit} unitSystem={unitSystem} selectedPipeId={selectedPipeId} setSelectedPipeId={setSelectedPipeId} setSelectedNodeId={setSelectedNodeId} setShowMobileResults={setShowSidebar} onOpenTable={() => setActiveModal({ type: 'FLEX_TABLE' })} calcMethod={calcMethod} projectMetadata={projectMetadata} visSettings={visSettings} setVisSettings={setVisSettings} mapStyle={mapStyle} setMapStyle={setMapStyle} mapInstance={mapInstance} />
                    : <div className="animate-fade-in">{selectedPipeId && <EditorPanel selectedPipe={pipes.find(p => p.id === selectedPipeId)} updatePipe={updatePipe} materials={materials} addFitting={addFittingToPipe} updateFitting={updateFittingInPipe} handleMaterialChange={changePipeMaterial} handleDiameterChange={handleDiameterChange} handleDeletePipe={removePipe} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} addVertex={addPipeVertex} resetVertices={(id: any) => updatePipe(id, { vertices: [] })} />}{selectedNodeId && <EditorPanel selectedNode={nodes.find(n => n.id === selectedNodeId)} updateNode={updateNode} handleDeleteNode={removeNode} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} fetchElevation={fetchElevation} isMapMode={isMapMode} coordFormat={coordFormat} />}{selectedAnnotationId && <AnnotationEditor annotation={annotations.find(a => a.id === selectedAnnotationId)!} onUpdate={updateAnnotation} onDelete={(id) => { removeAnnotation(id); setSelectedAnnotationId(null); setShowSidebar(false); }} onClose={() => setShowSidebar(false)} />}</div>}
                </React.Suspense>
            </div>
@@ -1008,6 +1146,33 @@ export default function App() {
           </React.Suspense>
       )}
 
+      {isProjectSelectorOpen && (
+          <React.Suspense fallback={null}>
+              <ProjectSelectorModal
+                  currentUser={currentUser}
+                  onLogout={handleLogout}
+                  onCreateNew={() => { setIsProjectSelectorOpen(false); setActiveModal({ type: 'CREATE_PROJECT' }); }}
+                  onSelect={(proj: any) => {
+                      try {
+                          const data = JSON.parse(proj.data);
+                          if (data.metadata) setProjectMetadata({ ...data.metadata, _id: proj.id });
+                          if (data.nodes) setNodes(data.nodes); else setNodes([]);
+                          if (data.pipes) setPipes(data.pipes); else setPipes([]);
+                          if (data.demandGroups) setDemandGroups(data.demandGroups); else setDemandGroups([]);
+                          if (data.annotations) setAnnotations(data.annotations); else setAnnotations([]);
+                          if (data.annotationGroups) setAnnotationGroups(data.annotationGroups);
+                          if (data.mdConfig) setMdConfig(data.mdConfig);
+                          setSnapshot(null);
+                          setIsProjectSelectorOpen(false);
+                          showValidationToast(`Empreendimento "${data.metadata?.name || 'Carregado'}" aberto no mapa!`);
+                      } catch(e) {
+                          alert("Erro ao ler dados do projeto.");
+                      }
+                  }}
+              />
+          </React.Suspense>
+      )}
+
       {isFinancialManagerOpen && (
           <React.Suspense fallback={null}>
               <FinancialManagerModal 
@@ -1032,6 +1197,7 @@ export default function App() {
 
       <BottomBar onToggleDraw={toggleDrawMode} onAddNode={addNewNode} onAddPipe={() => { if (nodes.length >= 2) createPipeBetween(nodes[nodes.length - 2].id, nodes[nodes.length - 1].id); else showValidationToast("Crie ao menos 2 nós primeiro."); }} onToggleResults={() => { setSidebarMode('results'); setShowSidebar(!showSidebar || sidebarMode !== 'results'); }} onToggleConfig={() => setActiveModal({ type: 'CONFIG' })} isDrawMode={isDrawMode} isResultsOpen={showSidebar && sidebarMode === 'results'} isConfigOpen={activeModal?.type === 'CONFIG'} />
     </div>
+    )}
     </ErrorBoundary>
   );
 }
