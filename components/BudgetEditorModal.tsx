@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ProjectMetadata, BudgetItem, BudgetData, Proposal, PaymentStage, Organization, ProposalCategory } from '../types';
+import { ProjectMetadata, BudgetItem, BudgetData, Proposal, PaymentStage, Organization, ProposalCategory, User } from '../types';
 import { generateBudgetHtml, resolveContractorName } from '../services/contractService';
 import { ModalContainer, SmartNumberInput } from './CommonUI';
 import { CloseIcon, CalculatorIcon, SaveIcon, PlusIcon, TrashIcon, CheckIcon, LayersIcon, EyeIcon, PenToolIcon, HammerIcon, LayoutIcon, FilePdfIcon } from './Icons';
@@ -9,7 +9,7 @@ import { updateProjectInCloud, getCloudProjects, getOrganizationDetails, generat
 interface BudgetEditorModalProps {
     metadata: ProjectMetadata;
     userOrgName?: string;
-    currentUser?: any;
+    currentUser?: User;
     onClose: () => void;
     initialProposalId?: string;
     initialCategory?: ProposalCategory; // Optional: Force category for new
@@ -200,10 +200,10 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
     }, [category, projectType, totalLots, waterRate, sewageRate, hasEvte, evtePrice, evteQty, hasBooster, boosterPrice, boosterQty, hasLiftStation, liftStationPrice, liftStationQty]);
 
     const allItems = useMemo(() => {
-        return [...autoItems, ...extraItems].filter(item => item.totalPrice > 0);
+        return [...autoItems, ...extraItems].filter((item: BudgetItem) => item.totalPrice > 0);
     }, [autoItems, extraItems]);
 
-    const totalValue = allItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const totalValue = allItems.reduce((sum: number, item: BudgetItem) => sum + item.totalPrice, 0);
 
     const handleAddExtra = () => {
         if (!newExtraDesc.trim() || newExtraVal <= 0) return;
@@ -251,9 +251,10 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
             if (editingId === id) handleNewProposal();
             
             alert("Proposta excluída com sucesso.");
-        } catch (e: any) {
-            console.error(e);
-            alert("Erro ao excluir: " + e.message);
+        } catch (e: unknown) {
+            const err = e as Error;
+            console.error(err);
+            alert("Erro ao excluir: " + err.message);
         } finally {
             setIsSaving(false);
         }
@@ -324,8 +325,9 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
             }
             
             alert(editingId ? `Proposta atualizada para Revisão ${finalRevision}!` : `Proposta ${finalNumber} gerada com sucesso!`);
-        } catch (e: any) {
-            alert("Erro ao salvar: " + e.message);
+        } catch (e: unknown) {
+            const err = e as Error;
+            alert("Erro ao salvar: " + err.message);
         } finally {
             setIsSaving(false);
         }
@@ -437,7 +439,7 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                     {(!localProposals || localProposals.length === 0) && (
                                         <div className="text-center text-slate-400 text-xs italic py-10">Nenhuma proposta salva.</div>
                                     )}
-                                    {[...localProposals].reverse().map(p => (
+                                    {[...localProposals].reverse().map((p: Proposal) => (
                                         <div key={p.id} className={`bg-white p-3 rounded-xl border-2 transition-all shadow-sm flex flex-col gap-3 ${p.id === editingId ? 'border-orange-400 ring-2 ring-orange-100' : 'border-slate-100 hover:border-slate-300'}`}>
                                             <div className="flex justify-between items-start">
                                                 <div>
@@ -477,8 +479,8 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                     <section className="space-y-4">
                                         <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-b border-blue-100 pb-1">Escopo do Projeto</h4>
                                         <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl">
-                                            {['water', 'sewage', 'both'].map((t) => (
-                                                <button key={t} onClick={() => setProjectType(t as any)} className={`py-2 text-[10px] font-bold rounded-lg transition-all ${projectType === t ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
+                                            {['water', 'sewage', 'both'].map((t: string) => (
+                                                <button key={t} onClick={() => setProjectType(t as 'water' | 'sewage' | 'both')} className={`py-2 text-[10px] font-bold rounded-lg transition-all ${projectType === t ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
                                                     {t === 'water' ? 'Água' : t === 'sewage' ? 'Esgoto' : 'Ambos'}
                                                 </button>
                                             ))}
@@ -548,14 +550,14 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                 </div>
 
                                 <div className="space-y-2 mt-2">
-                                    {extraItems.map(item => (
+                                    {extraItems.map((item: BudgetItem) => (
                                         <div key={item.id} className="bg-slate-50 border border-slate-200 rounded-lg p-2 relative group">
-                                            <button onClick={() => setExtraItems(extraItems.filter(i => i.id !== item.id))} className="absolute -top-1 -right-1 bg-white text-red-400 border border-slate-200 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"><TrashIcon/></button>
+                                            <button onClick={() => setExtraItems(extraItems.filter((i: BudgetItem) => i.id !== item.id))} className="absolute -top-1 -right-1 bg-white text-red-400 border border-slate-200 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"><TrashIcon/></button>
                                             <div className="mb-1">
                                                 <input 
                                                     type="text" 
                                                     value={item.description} 
-                                                    onChange={e => setExtraItems(extraItems.map(i => i.id === item.id ? { ...i, description: e.target.value } : i))} 
+                                                    onChange={e => setExtraItems(extraItems.map((i: BudgetItem) => i.id === item.id ? { ...i, description: e.target.value } : i))} 
                                                     className="w-full bg-transparent text-xs font-bold outline-none text-slate-700 focus:bg-white focus:p-1 rounded" 
                                                     placeholder="Descrição" 
                                                 />
@@ -566,7 +568,7 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                                     <div className="w-12">
                                                         <SmartNumberInput 
                                                             value={item.quantity} 
-                                                            onChange={(v:number) => setExtraItems(extraItems.map(i => i.id === item.id ? { ...i, quantity: v, totalPrice: round(v*i.unitPrice) } : i))} 
+                                                            onChange={(v:number) => setExtraItems(extraItems.map((i: BudgetItem) => i.id === item.id ? { ...i, quantity: v, totalPrice: round(v*i.unitPrice) } : i))} 
                                                             className="text-center text-xs font-black bg-transparent border-none focus:bg-white focus:ring-1 focus:ring-blue-200 rounded px-1 py-0.5" 
                                                         />
                                                     </div>
@@ -576,7 +578,7 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                                     <div className="w-24">
                                                         <SmartNumberInput 
                                                             value={item.unitPrice} 
-                                                            onChange={(v:number) => setExtraItems(extraItems.map(i => i.id === item.id ? { ...i, unitPrice: v, totalPrice: round(v*i.quantity) } : i))} 
+                                                            onChange={(v:number) => setExtraItems(extraItems.map((i: BudgetItem) => i.id === item.id ? { ...i, unitPrice: v, totalPrice: round(v*i.quantity) } : i))} 
                                                             className="text-right text-xs font-black bg-transparent border-none focus:bg-white focus:ring-1 focus:ring-blue-200 rounded px-1 py-0.5" 
                                                         />
                                                     </div>
@@ -600,12 +602,12 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                             <section className="space-y-3">
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-1">Pagamento (%)</h4>
                                 <div className="space-y-2">
-                                    {paymentStages.map(stg => (
+                                    {paymentStages.map((stg: PaymentStage) => (
                                         <div key={stg.id} className="flex gap-2 items-center group">
-                                            <input type="text" value={stg.description} onChange={e => setPaymentStages(paymentStages.map(s => s.id === stg.id ? { ...s, description: e.target.value } : s))} className="flex-1 text-xs border-b border-transparent focus:border-blue-300 outline-none bg-transparent" />
-                                            <input type="number" value={stg.percentage} onChange={e => setPaymentStages(paymentStages.map(s => s.id === stg.id ? { ...s, percentage: parseFloat(e.target.value)||0 } : s))} className="w-10 text-right text-xs font-bold bg-slate-100 rounded px-1" />
+                                            <input type="text" value={stg.description} onChange={e => setPaymentStages(paymentStages.map((s: PaymentStage) => s.id === stg.id ? { ...s, description: e.target.value } : s))} className="flex-1 text-xs border-b border-transparent focus:border-blue-300 outline-none bg-transparent" />
+                                            <input type="number" value={stg.percentage} onChange={e => setPaymentStages(paymentStages.map((s: PaymentStage) => s.id === stg.id ? { ...s, percentage: parseFloat(e.target.value)||0 } : s))} className="w-10 text-right text-xs font-bold bg-slate-100 rounded px-1" />
                                             <span className="text-xs text-slate-400">%</span>
-                                            <button onClick={() => setPaymentStages(paymentStages.filter(s => s.id !== stg.id))} className="text-red-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><TrashIcon/></button>
+                                            <button onClick={() => setPaymentStages(paymentStages.filter((s: PaymentStage) => s.id !== stg.id))} className="text-red-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><TrashIcon/></button>
                                         </div>
                                     ))}
                                     <button onClick={() => setPaymentStages([...paymentStages, { id: `stg-${Date.now()}`, description: 'Nova Etapa', percentage: 0 }])} className="text-[10px] text-blue-500 font-bold hover:underline">+ Adicionar Etapa</button>
@@ -616,9 +618,9 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                         <div className="p-6 bg-slate-50 border-t border-slate-200">
                             <div className="flex justify-between items-center mb-4">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TOTAL</span>
-                                <div className="text-2xl font-black text-emerald-600 tracking-tighter">
-                                    R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                </div>
+                                    <div className="text-2xl font-black text-emerald-600 tracking-tighter">
+                                        R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                    </div>
                             </div>
                             <button 
                                 onClick={handlePrint} 
@@ -762,8 +764,19 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
     );
 };
 
-const BudgetToggle = ({ checked, onChange, value, onValueChange, qty, onQtyChange, label, color }: any) => {
-    const colorClasses: any = {
+interface BudgetToggleProps {
+    checked: boolean;
+    onChange: (val: boolean) => void;
+    value: number;
+    onValueChange: (val: number) => void;
+    qty: number;
+    onQtyChange: (val: number) => void;
+    label: string;
+    color: 'blue' | 'orange' | 'indigo';
+}
+
+const BudgetToggle = ({ checked, onChange, value, onValueChange, qty, onQtyChange, label, color }: BudgetToggleProps) => {
+    const colorClasses: Record<string, string> = {
         blue: 'text-blue-600 border-blue-200 bg-blue-50',
         orange: 'text-orange-600 border-orange-200 bg-orange-50',
         indigo: 'text-indigo-600 border-indigo-200 bg-indigo-50'

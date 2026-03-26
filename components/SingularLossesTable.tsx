@@ -27,7 +27,7 @@ export const SingularLossesTable: React.FC<SingularLossesTableProps> = ({
         const velocity = flowRateSI > 0 ? flowRateSI / Area : 0;
         const kineticHead = (velocity * velocity) / (2 * GRAVITY);
         
-        const kSum = fittings.reduce((acc, f) => acc + (f.k * f.count), 0);
+        const kSum = fittings.reduce((acc: number, f: Fitting) => acc + (f.k * f.count), 0);
         const hfSum = kSum * kineticHead;
 
         return { 
@@ -49,7 +49,7 @@ export const SingularLossesTable: React.FC<SingularLossesTableProps> = ({
         onChange(newFittings);
     };
 
-    const handleUpdateFitting = (index: number, field: keyof Fitting, value: any) => {
+    const handleUpdateFitting = (index: number, field: keyof Fitting, value: string | number) => {
         const newFittings = [...fittings];
         if (field === 'id') {
             const ref = COMMON_FITTINGS.find(f => f.id === value);
@@ -155,7 +155,7 @@ export const SingularLossesTable: React.FC<SingularLossesTableProps> = ({
                     <tfoot className="bg-slate-100 border-t-2 border-slate-200 font-bold text-xs">
                         <tr>
                             <td className="p-2 text-right text-slate-600 uppercase">Totais:</td>
-                            <td className="p-2 text-center text-slate-800">{fittings.reduce((acc, f) => acc + f.count, 0)}</td>
+                            <td className="p-2 text-center text-slate-800">{fittings.reduce((acc: number, f: Fitting) => acc + f.count, 0)}</td>
                             <td className="p-2 text-center text-slate-800 font-mono">K={totalK.toFixed(2)}</td>
                             <td colSpan={2}></td>
                             <td className="p-2 text-right text-blue-700 font-mono text-sm bg-blue-100 border-l border-blue-200">

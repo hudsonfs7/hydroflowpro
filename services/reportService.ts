@@ -1,82 +1,102 @@
-
 import { Node, PipeSegment, CalculationResult, NodeResult, UnitSystem, FlowUnit, Material } from '../types';
-import { convertFlowFromSI } from './calcService';
+import { convertFlowFromSI, getPumpOrientations } from './calcService';
+
+const calculatePowerCV = (flow: number, head: number, unit: FlowUnit, efficiency: number) => {
+    let flowM3h = flow;
+    if (unit === 'L/s') flowM3h = flow * 3.6;
+    else if (unit === 'm³/day') flowM3h = flow / 24;
+    else if (unit === 'gpm') flowM3h = flow * 0.227124;
+
+    const powerKW = (flowM3h * head * 9.81) / (3600 * (efficiency / 100));
+    return powerKW * 1.35962; // Convert kW to CV
+};
 
 export const generateReportHtml = (projectData: any) => {
-  const { nodes, pipes, results, nodeResults, totals, flowUnit, unitSystem, materials } = projectData;
+  const { nodes, pipes, results, nodeResults, totals, flowUnit, unitSystem, materials, projectMetadata, calcMethod, mapImage } = projectData;
   const date = new Date().toLocaleDateString('pt-BR');
   
-  // Find Material Helper
-  const getMatName = (id: string) => {
-      if (!materials) return id;
-      const m = materials.find((mat: Material) => mat.id === id);
-      return m ? m.name : id;
-  };
-
-  // Safe Node Results Lookup
+  const studyName = projectMetadata?.studyName || projectMetadata?.name || 'Projeto Sem Nome';
+  const location = projectMetadata?.location || '';
+  const peopleServed = projectMetadata?.peopleServed || '';
+  const calcMethodName = calcMethod === 'darcy-weisbach' ? 'Darcy-Weisbach' : 'Hazen-Williams';
+  
   const getNodeRes = (id: string) => {
       if (!nodeResults) return null;
-      // Handle both Map and Array (flexible)
       if (nodeResults instanceof Map) return nodeResults.get(id);
       if (Array.isArray(nodeResults)) return nodeResults.find((n: any) => n.nodeId === id);
       return null;
   };
 
-  const style = `
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; padding: 20px; max-width: 210mm; margin: 0 auto; }
-    h1 { color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; }
-    h2 { color: #475569; margin-top: 30px; font-size: 16px; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .meta { display: flex; justify-content: space-between; margin-bottom: 30px; color: #64748b; font-size: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; }
-    .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px; }
-    .card { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
-    .card-label { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: bold; margin-bottom: 5px; }
-    .card-value { font-size: 18px; font-weight: bold; color: #0f172a; }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
-    th { background: #eff6ff; color: #1e40af; text-align: left; padding: 8px; font-weight: 600; border-bottom: 2px solid #bfdbfe; }
-    td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
-    tr:nth-child(even) { background-color: #f8fafc; }
-    .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
-    .text-right { text-align: right; }
-    @media print {
-      body { padding: 0; }
-      .no-print { display: none; }
-    }
-  `;
-
-  // Helper to safely format numbers
   const safeFixed = (val: any, digits: number = 2) => {
       if (typeof val === 'number' && !isNaN(val)) return val.toFixed(digits);
       return "0.00";
   };
 
-  // Generate Rows
-  const nodeRows = (nodes || []).map((n: Node) => {
-      let rawRes = getNodeRes(n.id);
-      
-      // Conversion
-      let cp = n.elevation;
-      let p = n.pressureHead || 0;
+  const style = `
+    @page { size: A4 portrait; margin: 15mm; }
+    @page landscape-page { size: A4 landscape; margin: 10mm; }
+    
+    body { font-family: 'Inter', -apple-system, sans-serif; color: #1e293b; margin: 0; padding: 0; line-height: 1.5; }
+    .page { width: 100%; box-sizing: border-box; page-break-after: always; position: relative; min-height: 260mm; }
+    .page-landscape { page: landscape-page; width: 100%; min-height: 180mm; position: relative; }
+    
+    .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; margin-bottom: 20px; }
+    .header-title { font-size: 20px; font-weight: 800; color: #1e40af; text-transform: uppercase; }
+    .header-meta { text-align: right; font-size: 10px; color: #64748b; }
+    
+    .presentation-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+    .presentation-box h2 { margin-top: 0; color: #1e40af; font-size: 16px; border: none; padding: 0; }
+    .presentation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 11px; }
+    .presentation-grid div strong { color: #475569; }
 
-      if (rawRes) {
-          if (unitSystem === UnitSystem.SI) {
-              cp = rawRes.head !== undefined ? rawRes.head : rawRes.cp;
-              p = rawRes.pressure !== undefined ? rawRes.pressure : rawRes.p;
-          } else {
-              const h = rawRes.head !== undefined ? rawRes.head : rawRes.cp;
-              const pr = rawRes.pressure !== undefined ? rawRes.pressure : rawRes.p;
-              cp = h / 0.3048;
-              p = pr / 0.3048;
-          }
-      }
+    h1 { font-size: 18px; color: #0f172a; margin: 20px 0 10px 0; border-left: 4px solid #3b82f6; padding-left: 10px; }
+    h2 { font-size: 14px; color: #334155; margin: 15px 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em; }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 20px; }
+    th { background: #f1f5f9; color: #475569; text-align: left; padding: 8px; font-weight: 700; border-bottom: 1px solid #cbd5e1; }
+    td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    tr:nth-child(even) { background-color: #f8fafc; }
+    .text-right { text-align: right; }
+    .font-bold { font-weight: 700; }
+    
+    .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+    .card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; }
+    .card-label { font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 600; }
+    .card-value { font-size: 16px; font-weight: 800; color: #1e40af; }
+    
+    .pump-container { border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 20px; background: #fff; page-break-inside: avoid; }
+    .pump-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+    .chart-placeholder { width: 100%; height: 250px; background: #f8fafc; border: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 12px; margin-top: 15px; }
+    
+    .croqui-container { width: 100%; height: 140mm; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #f8fafc; position: relative; margin-bottom: 10px; }
+    .croqui-img { width: 100%; height: 100%; object-fit: contain; }
+    
+    .footer { position: absolute; bottom: 0; width: 100%; text-align: center; font-size: 9px; color: #94a3b8; padding: 10px 0; border-top: 1px solid #f1f5f9; }
+    
+    @media print {
+      .no-print { display: none; }
+      body { -webkit-print-color-adjust: exact; }
+      .page { page-break-after: always; }
+      .page:last-of-type { page-break-after: auto; }
+      .page-landscape { page: landscape-page; }
+    }
+  `;
 
+  // Quantitativo de Material e DN
+  const quantitativoMap = new Map<string, number>();
+  (pipes || []).forEach((p: PipeSegment) => {
+      const matObj = materials ? materials.find((m: Material) => m.id === p.materialId) : null;
+      const matName = matObj ? matObj.name : p.materialId || "Desconhecido";
+      const key = `${matName}|${p.nominalDiameter}`;
+      quantitativoMap.set(key, (quantitativoMap.get(key) || 0) + p.length);
+  });
+
+  const quantitativoRows = Array.from(quantitativoMap.entries()).map(([key, length]) => {
+      const [mat, dn] = key.split('|');
       return `<tr>
-        <td>${n.id}</td>
-        <td>${n.name || ''}</td>
-        <td>${n.type === 'source' ? 'Fonte' : 'Demanda'}</td>
-        <td class="text-right">${safeFixed(n.elevation)}</td>
-        <td class="text-right">${n.baseDemand || 0}</td>
-        <td class="text-right"><strong>${safeFixed(cp)}</strong></td>
-        <td class="text-right">${safeFixed(p)}</td>
+          <td>${mat}</td>
+          <td class="text-right">${dn}</td>
+          <td class="text-right font-bold">${safeFixed(length, 1)}</td>
       </tr>`;
   }).join('');
 
@@ -86,15 +106,24 @@ export const generateReportHtml = (projectData: any) => {
       const vel = res ? res.velocity : 0;
       const hl = res ? res.totalHeadLoss : 0;
       const hlUnit = res ? res.unitHeadLoss : 0;
-      const matFull = getMatName(p.materialId) || "Desconhecido";
-      const mat = matFull.split(' ')[0];
+      const matObj = materials ? materials.find((m: Material) => m.id === p.materialId) : null;
+      const matFull = matObj ? matObj.name : p.materialId || "Desconhecido";
+      
+      const isDW = calcMethod === 'darcy-weisbach';
+      let coeffValue = 0;
+      if (isDW) {
+          coeffValue = p.customRoughness !== undefined ? p.customRoughness : (matObj ? matObj.roughness : 0);
+      } else {
+          coeffValue = p.customC !== undefined ? p.customC : (matObj ? matObj.hwCoefficient : 0);
+      }
       
       return `<tr>
         <td>${p.id.replace('p', 'T')}</td>
         <td>${p.startNodeId} → ${p.endNodeId}</td>
-        <td>${safeFixed(p.length, 1)}</td>
-        <td>${p.nominalDiameter}</td>
-        <td>${mat}</td>
+        <td class="text-right">${safeFixed(p.length, 1)}</td>
+        <td class="text-right">${p.nominalDiameter}</td>
+        <td>${matFull.split(' ')[0]}</td>
+        <td class="text-right">${coeffValue}</td>
         <td class="text-right font-bold">${safeFixed(flowVal)}</td>
         <td class="text-right">${safeFixed(vel)}</td>
         <td class="text-right">${safeFixed(hl)}</td>
@@ -102,62 +131,291 @@ export const generateReportHtml = (projectData: any) => {
       </tr>`;
   }).join('');
 
-  const totalHeadLoss = totals ? totals.total : 0;
-  const totalFlowSI = totals ? totals.flow : 0;
-  const totalFlowDisp = convertFlowFromSI(totalFlowSI, flowUnit);
+  const nodeRows = (nodes || []).map((n: Node) => {
+      let rawRes = getNodeRes(n.id);
+      let cp = n.elevation;
+      let p = n.pressureHead || 0;
+
+      if (rawRes) {
+          const h = rawRes.head !== undefined ? rawRes.head : rawRes.cp;
+          const pr = rawRes.pressure !== undefined ? rawRes.pressure : rawRes.p;
+          if (unitSystem === UnitSystem.SI) {
+              cp = h; p = pr;
+          } else {
+              cp = h / 0.3048; p = pr / 0.3048;
+          }
+      }
+
+      return `<tr>
+        <td>${n.id}</td>
+        <td>${n.name || '-'}</td>
+        <td>${n.type === 'source' ? 'Fonte' : n.type === 'pump' ? 'Bomba' : 'Demanda'}</td>
+        <td class="text-right">${safeFixed(n.elevation)}</td>
+        <td class="text-right">${n.baseDemand || 0}</td>
+        <td class="text-right font-bold">${safeFixed(cp)}</td>
+        <td class="text-right">${safeFixed(p)}</td>
+      </tr>`;
+  }).join('');
+
+  const pumps = (nodes || []).filter((n: Node) => n.type === 'pump');
+  let cmbContent = '';
+  if (pumps.length > 0) {
+      const pumpOrientations = getPumpOrientations(nodes, pipes);
+      pumps.forEach((p: Node) => {
+          const config = p.cmbConfig;
+          if (!config) return;
+          
+          let actualFlow = 0;
+          let actualHead = 0;
+          const suctionId = pumpOrientations.get(p.id);
+          const suctionRes = suctionId ? getNodeRes(suctionId) : undefined;
+          const res = getNodeRes(p.id);
+          
+          (pipes || []).filter((pipe: PipeSegment) => (pipe.startNodeId === p.id || pipe.endNodeId === p.id) && (pipe.startNodeId !== suctionId && pipe.endNodeId !== suctionId)).forEach((pipe: PipeSegment) => {
+              const pr = results ? results.find((r: any) => r.segmentId === pipe.id) : null;
+              if (pr) actualFlow += Math.abs(convertFlowFromSI(pr.flowRate, flowUnit));
+          });
+          
+          const getHead = (nr: any, def: number) => {
+              if (!nr) return def;
+              const h = nr.head !== undefined ? nr.head : nr.cp;
+              return unitSystem === UnitSystem.SI ? h : h / 0.3048;
+          };
+          
+          const hMontante = getHead(suctionRes, p.elevation);
+          const hJusante = getHead(res, p.elevation);
+          actualHead = Math.max(0, hJusante - hMontante);
+
+          const sysReqFlow = actualFlow || config.designFlow || 0;
+          const sysReqHead = actualHead || config.designHead || 0;
+
+          const Hstat = sysReqHead * 0.4;
+          const k_sys = sysReqFlow > 0 ? (sysReqHead - Hstat) / Math.pow(sysReqFlow, 2) : 0;
+
+          const Qd = config.designFlow || 0;
+          const Hd = config.designHead || 0;
+          const H0 = config.curveType === '3-point' && config.shutoffHead ? config.shutoffHead : 1.33 * Hd;
+          const A = Qd > 0 ? (H0 - Hd) / Math.pow(Qd, 2) : 0;
+
+          let opFlow = 0;
+          let opHead = 0;
+          if (A + k_sys > 0 && H0 > Hstat) {
+              opFlow = Math.sqrt((H0 - Hstat) / (A + k_sys));
+              opHead = H0 - A * Math.pow(opFlow, 2);
+          }
+          
+          const powerCV = calculatePowerCV(opFlow, opHead, flowUnit, config.efficiency || 70);
+          
+          const q_max = A > 0 ? Math.sqrt(H0 / A) : Qd * 1.5;
+          const plotMax = Math.max(q_max, sysReqFlow * 1.3, opFlow * 1.2) || 1;
+          const maxHeadPlot = Math.max(H0, sysReqHead * 1.2, opHead * 1.2) || 1;
+          
+          const mapX = (q: number) => 40 + (q / plotMax) * 340;
+          const mapY = (h: number) => 210 - (h / maxHeadPlot) * 190;
+          
+          let pumpPath = "";
+          let sysPath = "";
+          
+          for (let i = 0; i <= 50; i++) {
+              const q = (plotMax * i) / 50;
+              const pumpHead = Math.max(0, H0 - A * Math.pow(q, 2));
+              const sysHead = Hstat + k_sys * Math.pow(q, 2);
+              
+              const px = mapX(q);
+              const pyPump = mapY(pumpHead);
+              const pySys = mapY(sysHead);
+              
+              if (i === 0) {
+                  pumpPath += `M ${px} ${pyPump} `;
+                  sysPath += `M ${px} ${pySys} `;
+              } else {
+                  pumpPath += `L ${px} ${pyPump} `;
+                  sysPath += `L ${px} ${pySys} `;
+              }
+          }
+          
+          const opX = mapX(opFlow);
+          const opY = mapY(opHead);
+
+          cmbContent += `
+          <div class="pump-container">
+              <h2 style="color: #1e40af; margin-top: 0;">${p.name || 'Bomba ' + p.id}</h2>
+              <div class="pump-grid">
+                  <div>
+                      <h3 style="font-size: 11px; color: #64748b; margin-bottom: 5px;">DADOS DE PROJETO</h3>
+                      <table style="margin-bottom: 0;">
+                          <tr><td>Vazão Requerida</td><td class="text-right font-bold">${safeFixed(config.designFlow)} ${flowUnit}</td></tr>
+                          <tr><td>AMT Requerida</td><td class="text-right font-bold">${safeFixed(config.designHead)} mca</td></tr>
+                          <tr><td>Rendimento</td><td class="text-right">${safeFixed(config.efficiency)}%</td></tr>
+                      </table>
+                  </div>
+                  <div>
+                      <h3 style="font-size: 11px; color: #64748b; margin-bottom: 5px;">DADOS DE OPERAÇÃO</h3>
+                      <table style="margin-bottom: 0;">
+                          <tr><td>Vazão Real</td><td class="text-right font-bold">${safeFixed(actualFlow)} ${flowUnit}</td></tr>
+                          <tr><td>AMT Real</td><td class="text-right font-bold">${safeFixed(actualHead)} mca</td></tr>
+                          <tr><td>Potência Estimada</td><td class="text-right font-bold">${safeFixed(powerCV)} cv</td></tr>
+                      </table>
+                  </div>
+              </div>
+              <div class="chart-container" style="margin-top: 15px; text-align: center;">
+                  <svg width="400" height="250" viewBox="0 0 400 250" style="border: 1px solid #e2e8f0; border-radius: 4px; display: inline-block; max-width: 100%;">
+                      <!-- Grid -->
+                      <line x1="40" y1="20" x2="40" y2="210" stroke="#e2e8f0" stroke-width="1" />
+                      <line x1="40" y1="210" x2="380" y2="210" stroke="#e2e8f0" stroke-width="1" />
+                      
+                      <!-- Pump Curve (Blue) -->
+                      <path d="${pumpPath}" fill="none" stroke="#2563eb" stroke-width="3" />
+                      
+                      <!-- System Curve (Gray Dashed) -->
+                      <path d="${sysPath}" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6,4" />
+                      
+                      <!-- Operating Point -->
+                      <circle cx="${opX}" cy="${opY}" r="6" fill="#dc2626" />
+                      <text x="${opX + 10}" y="${opY - 5}" font-size="12" fill="#dc2626" font-weight="bold">Ponto de Operação</text>
+                      
+                      <!-- Labels -->
+                      <text x="200" y="240" text-anchor="middle" font-size="12" fill="#475569">Vazão (${flowUnit})</text>
+                      <text x="20" y="125" text-anchor="middle" font-size="12" fill="#475569" transform="rotate(-90 20 125)">AMT (mca)</text>
+                  </svg>
+                  <div style="font-size: 11px; margin-top: 8px; color: #475569;">
+                      <strong>Ponto de Operação:</strong> ${safeFixed(opFlow)} ${flowUnit} @ ${safeFixed(opHead)} mca
+                  </div>
+              </div>
+          </div>`;
+      });
+  } else {
+      cmbContent = '<p style="color: #94a3b8; text-align: center; padding: 40px;">Nenhum Conjunto Motobomba configurado neste projeto.</p>';
+  }
 
   return `
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Relatório HydroFlow Pro</title>
+        <title>Relatório Técnico - ${studyName}</title>
         <meta charset="utf-8" />
         <style>${style}</style>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
       </head>
       <body>
-        <div class="meta">
-           <div>
-             <strong>HydroFlow Pro</strong><br/>
-             Relatório de Cálculo Hidráulico
-           </div>
-           <div class="text-right">
-             <strong>Data:</strong> ${date}<br/>
-             <strong>Sistema:</strong> ${unitSystem} / ${flowUnit}
-           </div>
+        <!-- PÁGINA 1: APRESENTAÇÃO E TUBULAÇÕES -->
+        <div class="page">
+            <div class="header">
+                <div class="header-title">HydroFlow Pro</div>
+                <div class="header-meta">
+                    <strong>PROJETO:</strong> ${studyName}<br/>
+                    <strong>DATA:</strong> ${date} | <strong>PÁGINA:</strong> 1/3
+                </div>
+            </div>
+            
+            <div class="presentation-box">
+                <h2>Apresentação do Projeto</h2>
+                <div class="presentation-grid">
+                    <div><strong>Nome do Estudo:</strong> ${studyName}</div>
+                    <div><strong>Localidade:</strong> ${location || '-'}</div>
+                    <div><strong>Pessoas Atendidas:</strong> ${peopleServed || '-'}</div>
+                    <div><strong>Vazão Total do Sistema:</strong> ${totals?.flowDisplay || '0.00'} ${flowUnit}</div>
+                    <div><strong>Método de Cálculo:</strong> ${calcMethodName}</div>
+                    <div><strong>Data de Emissão:</strong> ${date}</div>
+                </div>
+            </div>
+            
+            <h1>1. Quantitativo de Materiais</h1>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Material</th>
+                        <th class="text-right">DN (mm)</th>
+                        <th class="text-right">Extensão Total (m)</th>
+                    </tr>
+                </thead>
+                <tbody>${quantitativoRows}</tbody>
+            </table>
+
+            <h1>2. Detalhamento das Tubulações</h1>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Trecho</th>
+                        <th class="text-right">Comp. (m)</th>
+                        <th class="text-right">DN (mm)</th>
+                        <th>Material</th>
+                        <th class="text-right">${calcMethod === 'darcy-weisbach' ? 'Rug.' : 'C'}</th>
+                        <th class="text-right">Vazão (${flowUnit})</th>
+                        <th class="text-right">Vel. (m/s)</th>
+                        <th class="text-right">Perda (m)</th>
+                        <th class="text-right">J (m/km)</th>
+                    </tr>
+                </thead>
+                <tbody>${pipeRows}</tbody>
+            </table>
+
+            <h2>2.1. Dados dos Nós</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nome</th>
+                        <th>Tipo</th>
+                        <th class="text-right">Elev. (m)</th>
+                        <th class="text-right">Demanda</th>
+                        <th class="text-right">Cota Piez. (m)</th>
+                        <th class="text-right">Pressão (mca)</th>
+                    </tr>
+                </thead>
+                <tbody>${nodeRows}</tbody>
+            </table>
+            
+            <div class="footer">Relatório Gerado por HydroFlow Pro - Página 1 de 3</div>
         </div>
-        
-        <h1>Relatório Técnico</h1>
-        
-        <div class="summary-grid">
-           <div class="card">
-              <div class="card-label">Perda de Carga Total</div>
-              <div class="card-value">${safeFixed(totalHeadLoss)} m</div>
-           </div>
-           <div class="card">
-              <div class="card-label">Vazão Total</div>
-              <div class="card-value">${safeFixed(totalFlowDisp)} ${flowUnit}</div>
-           </div>
-           <div class="card">
-              <div class="card-label">Elementos</div>
-              <div class="card-value">${nodes ? nodes.length : 0} Nós / ${pipes ? pipes.length : 0} Tubos</div>
-           </div>
+
+        <!-- PÁGINA 2: CMB E CURVAS -->
+        <div class="page">
+            <div class="header">
+                <div class="header-title">HydroFlow Pro</div>
+                <div class="header-meta">
+                    <strong>PROJETO:</strong> ${studyName}<br/>
+                    <strong>DATA:</strong> ${date} | <strong>PÁGINA:</strong> 2/3
+                </div>
+            </div>
+            
+            <h1>3. Conjunto Motobomba e Curvas de Performance</h1>
+            ${cmbContent}
+            
+            <div class="footer">Relatório Gerado por HydroFlow Pro - Página 2 de 3</div>
         </div>
 
-        <h2>Detalhamento de Nós</h2>
-        <table>
-           <thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th class="text-right">Elev. (m)</th><th class="text-right">Demanda</th><th class="text-right">Cota Piez. (m)</th><th class="text-right">Pressão (mca)</th></tr></thead>
-           <tbody>${nodeRows}</tbody>
-        </table>
+        <!-- PÁGINA 3: CROQUI (PAISAGEM) -->
+        <div class="page page-landscape">
+            <div class="header">
+                <div class="header-title">HydroFlow Pro</div>
+                <div class="header-meta">
+                    <strong>PROJETO:</strong> ${studyName}<br/>
+                    <strong>DATA:</strong> ${date} | <strong>PÁGINA:</strong> 3/3
+                </div>
+            </div>
+            
+            <h1>4. Croqui da Rede Hidráulica</h1>
+            <div class="croqui-container">
+                ${mapImage ? `<img src="${mapImage}" class="croqui-img" alt="Croqui da rede" />` : '<div class="chart-placeholder">Mapa não disponível</div>'}
+            </div>
+            
+            <div style="margin-top: 10px; display: flex; gap: 20px; font-size: 10px; color: #64748b; font-weight: 600;">
+                <div><strong>LEGENDA:</strong></div>
+                <div>P: Pressão (mca)</div>
+                <div>M: Material</div>
+                <div>E: Extensão (m)</div>
+                <div>Vazão: L/s e m³/h</div>
+            </div>
+            
+            <div class="footer">Relatório Gerado por HydroFlow Pro - Página 3 de 3</div>
+        </div>
 
-        <h2>Detalhamento de Tubulações</h2>
-        <table>
-           <thead><tr><th>ID</th><th>Trecho</th><th>Comp. (m)</th><th>DN</th><th>Mat</th><th class="text-right">Vazão (${flowUnit})</th><th class="text-right">Vel. (m/s)</th><th class="text-right">Perda (m)</th><th class="text-right">J (m/km)</th></tr></thead>
-           <tbody>${pipeRows}</tbody>
-        </table>
-
-        <div class="footer">Gerado por HydroFlow Pro</div>
         <script>
-            setTimeout(() => { window.print(); }, 500);
+            window.onload = () => {
+                setTimeout(() => { window.print(); }, 1000);
+            };
         </script>
       </body>
     </html>

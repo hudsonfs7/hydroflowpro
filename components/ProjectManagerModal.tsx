@@ -10,7 +10,7 @@ import {
     PlusIcon, FolderIcon, EyeIcon, SettingsIcon, 
     CloseIcon, SearchIcon, CheckIcon,
     FileTextIcon, TrashIcon, UsersIcon, CalculatorIcon,
-    DropIcon, WaypointIcon, BuildingIcon, FileSignatureIcon, WalletIcon
+    DropIcon, WaypointIcon, BuildingIcon, FileSignatureIcon, WalletIcon, MapIcon
 } from './Icons';
 
 interface ProjectManagerModalProps {
@@ -256,7 +256,11 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
             <div className="bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] w-[95vw] h-[85vh] flex flex-col overflow-hidden border border-slate-200 animate-slide-up-center">
                 <div className="h-16 bg-slate-800 flex items-center justify-between px-6 shrink-0 shadow-lg z-10">
                     <div className="flex items-center gap-1">
-                        <RibbonButton icon={<PlusIcon/>} label="Criar Projeto" onClick={onCreateNew} active />
+                        <h2 className="text-white text-lg font-black hidden md:block mr-2 tracking-tight whitespace-nowrap">Projetos Cadastrados</h2>
+                        <div className="w-[1px] h-8 bg-slate-700 mx-2 hidden md:block"></div>
+                        <RibbonButton icon={<MapIcon/>} label="Abrir Mapa" disabled={!selectedId} onClick={() => selectedProject && onOpenProject(JSON.parse(selectedProject.data))} active={!!selectedId} />
+                        <div className="w-[1px] h-8 bg-slate-700 mx-2"></div>
+                        <RibbonButton icon={<PlusIcon/>} label="Criar Projeto" onClick={onCreateNew} active={!selectedId} />
                         <div className="w-[1px] h-8 bg-slate-700 mx-2"></div>
                         <RibbonButton icon={<EyeIcon/>} label="Ver Detalhes" disabled={!selectedId} onClick={() => setShowDetailsId(selectedId)} />
                         <RibbonButton icon={<SettingsIcon/>} label="Editar" disabled={!selectedId} onClick={() => onEditMetadata(selectedProject)} />
@@ -355,6 +359,7 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
             {showContractEditorId && getProjectMetadata(showContractEditorId) && (
                 <ContractEditorModal 
                     metadata={getProjectMetadata(showContractEditorId)}
+                    fullProjectData={getProjectData(showContractEditorId)}
                     userOrgName={userOrgName}
                     onClose={() => setShowContractEditorId(null)}
                 />

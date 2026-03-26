@@ -55,6 +55,15 @@ export const ModalContainer = ({
   );
 };
 
+interface SmartNumberInputProps {
+  value?: number;
+  onChange: (val: number) => void;
+  className?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  min?: number;
+}
+
 export const SmartNumberInput = ({ 
   value, 
   onChange, 
@@ -62,21 +71,24 @@ export const SmartNumberInput = ({
   placeholder, 
   disabled = false,
   min
-}: any) => {
+}: SmartNumberInputProps) => {
   const [localStr, setLocalStr] = useState<string>(
     value !== undefined && value !== null && !isNaN(value) ? value.toString() : ''
   );
 
   useEffect(() => {
     if (value === undefined || value === null || isNaN(value)) {
-        if (localStr !== '') setLocalStr('');
+        if (localStr !== '') {
+            Promise.resolve().then(() => setLocalStr(''));
+        }
         return;
     }
     const currentParsed = localStr === '' ? 0 : parseFloat(localStr.replace(',', '.'));
     if (Math.abs(value - currentParsed) > 0.000001) {
-        setLocalStr(value.toString());
+        const newVal = value.toString();
+        Promise.resolve().then(() => setLocalStr(newVal));
     }
-  }, [value]); 
+  }, [value, localStr]); 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -109,11 +121,16 @@ export const SmartNumberInput = ({
 
 export function useClickOutside(callback: () => void) {
   const ref = useRef<HTMLDivElement>(null);
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (ref.current && !ref.current.contains(event.target as Node)) {
-        callback();
+        callbackRef.current();
       }
     };
 
@@ -121,7 +138,7 @@ export function useClickOutside(callback: () => void) {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [callback]);
+  }, []);
 
   return ref;
 }

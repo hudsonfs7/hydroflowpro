@@ -215,14 +215,15 @@ export const MapCanvasLayer: React.FC<Omit<MapAnnotationsProps, 'handlers' | 'ac
     );
 };
 
-export const MapSvgLayer: React.FC<MapAnnotationsProps> = ({ 
+export const MapSvgLayer: React.FC<MapAnnotationsProps & { reportMode?: boolean }> = ({ 
     annotations, 
     groups,
     mapInstance, 
     globalScale = 1,
     activeAnnotationId,
     selectedAnnotationId,
-    handlers
+    handlers,
+    reportMode
 }) => {
     if (!mapInstance) return null;
 
@@ -262,6 +263,9 @@ export const MapSvgLayer: React.FC<MapAnnotationsProps> = ({
                             const isActive = ann.id === activeAnnotationId;
                             const isSelected = ann.id === selectedAnnotationId;
                             const showEditingUI = (isActive || isSelected);
+
+                            // Filter labels in report mode
+                            if (reportMode && ann.content && !['P', 'M', 'E'].some(prefix => ann.content.startsWith(prefix))) return null;
 
                             if ((ann.type === 'area' || ann.type === 'polyline' || ann.type === 'line') && ann.points && ann.points.length > 0) {
                                 const validPoints = ann.points.filter(p => p && typeof p.lat === 'number' && typeof p.lng === 'number');

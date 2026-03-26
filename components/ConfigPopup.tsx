@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { 
-  FlowUnit, CalcMethod, SolverType, LabelPosition, VisualizationSettings, MDConfig 
+  FlowUnit, CalcMethod, SolverType, LabelPosition, VisualizationSettings, MDConfig, Node, PipeSegment, CalculationResult, NodeResult 
 } from '../types';
 import { GlobalSettingsInputs, DirectionControl } from './ResultsPanel';
 import { 
@@ -33,7 +33,12 @@ interface ConfigPopupProps {
   onApplyGlobal: () => void;
   mdConfig: MDConfig;
   setMdConfig: (cfg: MDConfig) => void;
-  projectData: any;
+  projectData: {
+    nodes: Node[];
+    pipes: PipeSegment[];
+    results: CalculationResult[];
+    nodeResults: NodeResult[];
+  } | null;
 }
 
 type ConfigTab = 'calc' | 'scale' | 'vis' | 'md';
@@ -95,7 +100,14 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
         <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
           {activeTab === 'calc' && (
             <div className="space-y-8 animate-fade-in">
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-3 gap-8">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Método de Cálculo</label>
+                  <select value={calcMethod} onChange={(e) => setCalcMethod(e.target.value as CalcMethod)} className={selectClass}>
+                    <option value={CalcMethod.DARCY_WEISBACH}>Darcy-Weisbach</option>
+                    <option value={CalcMethod.HAZEN_WILLIAMS}>Hazen-Williams</option>
+                  </select>
+                </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Solver</label>
                   <select value={solverType} onChange={(e) => setSolverType(e.target.value as SolverType)} className={selectClass}>
@@ -125,7 +137,7 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
                   <InputGroup label="Modo de Escala">
                       <select 
                           value={visSettings.mode} 
-                          onChange={e => setVisSettings({...visSettings, mode: e.target.value as any})}
+                          onChange={e => setVisSettings({...visSettings, mode: e.target.value as 'adaptive' | 'fixed'})}
                           className={selectClass}
                       >
                           <option value="adaptive">Adaptativo (Zoom Dinâmico)</option>

@@ -106,7 +106,7 @@ export const WellProfile: React.FC<WellProfileProps> = ({ node, calculatedNO }) 
 
         {/* 2. Scale / Ruler (Left Side, faded) */}
         <g opacity="0.2">
-            {ticks.map(t => (
+            {ticks.map((t: number) => (
                 <g key={t} transform={`translate(0, ${groundY + (t * scale)})`}>
                     <line x1={wellX - 5} y1={0} x2={wellX} y2={0} stroke="#94a3b8" strokeWidth="1" />
                     <text x={wellX - 8} y={3} fontSize="8" textAnchor="end" fill="#94a3b8">{t}</text>

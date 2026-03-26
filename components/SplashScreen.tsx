@@ -11,7 +11,7 @@ export const SplashScreen = ({ onComplete }: { onComplete: () => void }) => {
             setTimeout(onComplete, 800); // Wait for exit animation
         }, 3000);
         return () => clearTimeout(timer);
-    }, [onComplete]);
+    }, []); // Removed onComplete to prevent infinite resets
 
     return (
         <AnimatePresence>

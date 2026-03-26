@@ -166,7 +166,10 @@ export const DemandTool = ({
 
     // Reset map selection mode when changing groups or closing
     useEffect(() => {
-        if (!activeGroupId) setIsMapSelectionMode(false);
+        if (!activeGroupId) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setIsMapSelectionMode(false);
+        }
     }, [activeGroupId]);
 
     // Sync Selection: Map <-> Active Group
@@ -176,13 +179,13 @@ export const DemandTool = ({
             const selectionSet = new Set<string>(selection);
             const groupArr = Array.from(groupSet);
 
-            if (groupSet.size !== selectionSet.size || !groupArr.every((x: string) => selectionSet.has(x))) {
+            if (groupSet.size !== selectionSet.size || !groupArr.every((x) => selectionSet.has(x))) {
                 setSelection(activeGroup.pipeIds);
             }
         } else {
             setSelection([]);
         }
-    }, [activeGroupId]); 
+    }, [activeGroupId, activeGroup, selection, setSelection]); 
 
     // When Map Selection changes, update Active Group (Auto-Save Pipe List)
     useEffect(() => {
@@ -190,11 +193,11 @@ export const DemandTool = ({
             const groupSet = new Set<string>(activeGroup.pipeIds);
             const selectionSet = new Set<string>(selection);
             const selectionArr = Array.from(selectionSet);
-            if (groupSet.size !== selectionSet.size || !selectionArr.every((x: string) => groupSet.has(x))) {
+            if (groupSet.size !== selectionSet.size || !selectionArr.every((x) => groupSet.has(x))) {
                 updateDemandGroup(activeGroup.id, { pipeIds: selection });
             }
         }
-    }, [selection]); 
+    }, [selection, activeGroup, updateDemandGroup]); 
 
     // Compute detailed pipe list for the active group table
     const activeGroupPipes = useMemo(() => {

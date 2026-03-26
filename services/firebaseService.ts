@@ -1,22 +1,3 @@
-
-import { initializeApp } from "firebase/app";
-import { 
-    getFirestore, 
-    collection, 
-    addDoc, 
-    getDocs, 
-    query, 
-    orderBy, 
-    where,
-    serverTimestamp,
-    deleteDoc,
-    doc,
-    updateDoc,
-    getDoc,
-    writeBatch,
-    runTransaction
-} from "firebase/firestore";
-import { getAnalytics } from "firebase/analytics";
 import { User, Organization } from "../types";
 
 const firebaseConfig = {
@@ -29,19 +10,28 @@ const firebaseConfig = {
   measurementId: "G-W669PK82WY"
 };
 
-// Inicializa o App
-const app = initializeApp(firebaseConfig);
+let lazyFirebase: any = null;
 
-// Inicializa Analytics (opcional)
-let analytics;
-try {
-    analytics = getAnalytics(app);
-} catch (e) {
-    console.warn("Analytics failed to load", e);
-}
-
-// Inicializa o Firestore
-const db = getFirestore(app);
+const getFirebaseDb = async () => {
+    if (lazyFirebase) return lazyFirebase;
+    
+    // Lazy load the SDK
+    const { initializeApp } = await import("firebase/app");
+    const firestore = await import("firebase/firestore");
+    
+    const app = initializeApp(firebaseConfig);
+    const db = firestore.getFirestore(app);
+    
+    try {
+        const { getAnalytics } = await import("firebase/analytics");
+        getAnalytics(app);
+    } catch (e) {
+        console.warn("Analytics failed to load", e);
+    }
+    
+    lazyFirebase = { db, ...firestore };
+    return lazyFirebase;
+};
 
 // --- GLOBAL SEQUENTIAL NUMBERING ---
 
@@ -50,11 +40,13 @@ const db = getFirestore(app);
  * Formato: SEQUENCIAL/ANO (Ex: 105/2026)
  */
 export const generateNextProposalNumber = async (): Promise<string> => {
+    const { db, doc, runTransaction } = await getFirebaseDb();
+    
     const year = new Date().getFullYear();
     const counterDocRef = doc(db, "system", "counters");
 
     try {
-        const newNumber = await runTransaction(db, async (transaction) => {
+        const newNumber = await runTransaction(db, async (transaction: any) => {
             const sfDoc = await transaction.get(counterDocRef);
             
             let currentCount = 0;
@@ -82,8 +74,9 @@ export const generateNextProposalNumber = async (): Promise<string> => {
         // O cliente pediu "crescente", não especificou padding, mas padrão comercial geralmente tem 2 ou 3 digitos.
         return `${newNumber.toString().padStart(2, '0')}/${year}`;
 
-    } catch (e) {
-        console.error("Erro ao gerar número de proposta:", e);
+    } catch (err) {
+        const error = err as Error;
+        console.error("Erro ao gerar número de proposta:", error);
         throw new Error("Falha ao gerar número de proposta sequencial.");
     }
 };
@@ -91,6 +84,8 @@ export const generateNextProposalNumber = async (): Promise<string> => {
 // --- AUTHENTICATION & USER MANAGEMENT ---
 
 export const loginUser = async (username: string, password: string): Promise<User | null> => {
+    const { db, collection, query, where, getDocs } = await getFirebaseDb();
+
     // Master Access Hardcoded
     if (username === 'hudsonfs7' && password === 'hercules21') {
         return {
@@ -109,31 +104,36 @@ export const loginUser = async (username: string, password: string): Promise<Use
             return { id: userDoc.id, ...userDoc.data() } as User;
         }
         return null;
-    } catch (e) {
-        console.error("Login failed:", e);
-        throw e;
+    } catch (err) {
+        const error = err as Error;
+        console.error("Login failed:", error);
+        throw error;
     }
 };
 
 export const getOrganizations = async (): Promise<Organization[]> => {
+    const { db, collection, query, orderBy, getDocs } = await getFirebaseDb();
     try {
         const q = query(collection(db, "organizations"), orderBy("name"));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Organization));
-    } catch (e) {
-        console.error("Error fetching organizations:", e);
+        return snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Organization));
+    } catch (err) {
+        const error = err as Error;
+        console.error("Error fetching organizations:", error);
         return [];
     }
 };
 
 export const getOrganizationDetails = async (orgId: string): Promise<Organization | null> => {
+    const { db, doc, getDoc } = await getFirebaseDb();
     if (orgId === 'MASTER_ACCESS' || !orgId) return null;
     try {
         const docRef = doc(db, "organizations", orgId);
         const snap = await getDoc(docRef);
         return snap.exists() ? { id: snap.id, ...snap.data() } as Organization : null;
-    } catch (e) {
-        console.error("Error fetching organization details:", e);
+    } catch (err) {
+        const error = err as Error;
+        console.error("Error fetching organization details:", error);
         return null;
     }
 };
@@ -146,50 +146,59 @@ export const getOrganizationName = async (orgId: string): Promise<string> => {
 };
 
 export const getUsers = async (): Promise<User[]> => {
+    const { db, collection, query, orderBy, getDocs } = await getFirebaseDb();
     try {
         const q = query(collection(db, "users"), orderBy("username"));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-    } catch (e) {
-        console.error("Error fetching users:", e);
+        return snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as User));
+    } catch (err) {
+        const error = err as Error;
+        console.error("Error fetching users:", error);
         return [];
     }
 };
 
 export const addOrganization = async (orgData: Omit<Organization, 'id' | 'createdAt'>): Promise<string> => {
+    const { db, collection, addDoc, serverTimestamp } = await getFirebaseDb();
     try {
         const docRef = await addDoc(collection(db, "organizations"), {
             ...orgData,
             createdAt: serverTimestamp()
         });
         return docRef.id;
-    } catch (e) {
-        console.error("Error adding organization:", e);
-        throw e;
+    } catch (err) {
+        const error = err as Error;
+        console.error("Error adding organization:", error);
+        throw error;
     }
 };
 
 export const updateOrganization = async (id: string, orgData: Partial<Organization>): Promise<void> => {
+    const { db, doc, updateDoc } = await getFirebaseDb();
     try {
         const docRef = doc(db, "organizations", id);
         const { id: _, createdAt: __, ...updateData } = orgData as any; // Exclude immutable fields
         await updateDoc(docRef, updateData);
-    } catch (e) {
-        console.error("Error updating organization:", e);
-        throw e;
+    } catch (err) {
+        const error = err as Error;
+        console.error("Error updating organization:", error);
+        throw error;
     }
 };
 
 export const deleteOrganization = async (id: string): Promise<void> => {
+    const { db, doc, deleteDoc } = await getFirebaseDb();
     try {
         await deleteDoc(doc(db, "organizations", id));
-    } catch (e) {
-        console.error("Error deleting organization:", e);
-        throw e;
+    } catch (err) {
+        const error = err as Error;
+        console.error("Error deleting organization:", error);
+        throw error;
     }
 };
 
 export const addUser = async (userData: Omit<User, 'id'>) => {
+    const { db, collection, query, where, getDocs, addDoc, serverTimestamp } = await getFirebaseDb();
     try {
         // Verifica duplicidade
         const q = query(collection(db, "users"), where("username", "==", userData.username));
@@ -201,28 +210,33 @@ export const addUser = async (userData: Omit<User, 'id'>) => {
             createdAt: serverTimestamp()
         });
         return docRef.id;
-    } catch (e) {
-        console.error("Error adding user:", e);
-        throw e;
+    } catch (err) {
+        const error = err as Error;
+        console.error("Error adding user:", error);
+        throw error;
     }
 };
 
 export const updateUser = async (id: string, userData: Partial<User>) => {
+    const { db, doc, updateDoc } = await getFirebaseDb();
     try {
         const docRef = doc(db, "users", id);
         await updateDoc(docRef, userData);
-    } catch (e) {
-        console.error("Error updating user:", e);
-        throw e;
+    } catch (err) {
+        const error = err as Error;
+        console.error("Error updating user:", error);
+        throw error;
     }
 };
 
 export const deleteUser = async (id: string) => {
+    const { db, doc, deleteDoc } = await getFirebaseDb();
     try {
         await deleteDoc(doc(db, "users", id));
-    } catch (e) {
-        console.error("Error deleting user:", e);
-        throw e;
+    } catch (err) {
+        const error = err as Error;
+        console.error("Error deleting user:", error);
+        throw error;
     }
 };
 
@@ -242,6 +256,7 @@ export const getProjectsByUser = async (username: string) => {
 };
 
 export const transferProjects = async (oldUserId: string, newUserId: string, organizationId: string) => {
+    const { db, doc, getDoc, writeBatch } = await getFirebaseDb();
     // Since projects are bound to OrganizationId, simply deleting the user doesn't delete the projects 
     // if other users exist in the same Org. 
     // BUT, the prompt implies "Deleted by User". 
@@ -289,6 +304,7 @@ export const transferProjects = async (oldUserId: string, newUserId: string, org
 };
 
 export const deleteProjectsByUser = async (userId: string, organizationId: string) => {
+    const { db, doc, getDoc, writeBatch } = await getFirebaseDb();
     const userSnap = await getDoc(doc(db, "users", userId));
     if (!userSnap.exists()) return;
     const userData = userSnap.data() as User;
@@ -316,6 +332,7 @@ export const deleteProjectsByUser = async (userId: string, organizationId: strin
  * Salva um projeto na nuvem (Cria Novo).
  */
 export const saveProjectToCloud = async (projectName: string, projectData: any, organizationId?: string) => {
+    const { db, collection, addDoc, serverTimestamp } = await getFirebaseDb();
     try {
         const docRef = await addDoc(collection(db, "projects"), {
             name: projectName,
@@ -324,9 +341,10 @@ export const saveProjectToCloud = async (projectName: string, projectData: any, 
             createdAt: serverTimestamp()
         });
         return docRef.id;
-    } catch (e: any) {
-        console.error("Erro Firebase ao Salvar:", e);
-        handleFirebaseError(e);
+    } catch (err) {
+        const error = err as Error;
+        console.error("Erro Firebase ao Salvar:", error);
+        handleFirebaseError(error);
     }
 };
 
@@ -334,6 +352,7 @@ export const saveProjectToCloud = async (projectName: string, projectData: any, 
  * Atualiza um projeto existente na nuvem.
  */
 export const updateProjectInCloud = async (id: string, projectName: string, projectData: any) => {
+    const { db, doc, updateDoc, serverTimestamp } = await getFirebaseDb();
     try {
         const docRef = doc(db, "projects", id);
         await updateDoc(docRef, {
@@ -341,9 +360,10 @@ export const updateProjectInCloud = async (id: string, projectName: string, proj
             data: JSON.stringify(projectData),
             updatedAt: serverTimestamp()
         });
-    } catch (e: any) {
-        console.error("Erro Firebase ao Atualizar:", e);
-        handleFirebaseError(e);
+    } catch (err) {
+        const error = err as Error;
+        console.error("Erro Firebase ao Atualizar:", error);
+        handleFirebaseError(error);
     }
 };
 
@@ -351,14 +371,16 @@ export const updateProjectInCloud = async (id: string, projectName: string, proj
  * Deleta um projeto da nuvem.
  */
 export const deleteProjectFromCloud = async (id: string) => {
+    const { db, doc, deleteDoc } = await getFirebaseDb();
     if (!id) throw new Error("ID do projeto não fornecido para deleção.");
     try {
         console.log(`Tentando deletar documento: ${id}`);
         await deleteDoc(doc(db, "projects", id));
         console.log(`Documento ${id} deletado com sucesso.`);
-    } catch (e: any) {
-        console.error("Erro Firebase ao Deletar:", e);
-        handleFirebaseError(e);
+    } catch (err) {
+        const error = err as Error;
+        console.error("Erro Firebase ao Deletar:", error);
+        handleFirebaseError(error);
     }
 };
 
@@ -368,6 +390,7 @@ export const deleteProjectFromCloud = async (id: string) => {
  * Caso contrário, filtra pela organização.
  */
 export const getCloudProjects = async (organizationId?: string): Promise<any[]> => {
+    const { db, collection, query, orderBy, where, getDocs } = await getFirebaseDb();
     try {
         let q;
         
@@ -388,7 +411,7 @@ export const getCloudProjects = async (organizationId?: string): Promise<any[]> 
         
         if (querySnapshot.empty) return [];
         
-        const projects = querySnapshot.docs.map(doc => ({
+        const projects = querySnapshot.docs.map((doc: any) => ({
             id: doc.id,
             ...doc.data()
         }));
@@ -397,17 +420,18 @@ export const getCloudProjects = async (organizationId?: string): Promise<any[]> 
         // (Necessário quando se usa where + orderBy em campos diferentes)
         if (organizationId !== 'MASTER_ACCESS' && organizationId) {
             projects.sort((a: any, b: any) => {
-                const tA = a.createdAt?.seconds || 0;
-                const tB = b.createdAt?.seconds || 0;
+                const tA = a.createdAt instanceof Date ? a.createdAt.getTime() : (a.createdAt as any)?.seconds || 0;
+                const tB = b.createdAt instanceof Date ? b.createdAt.getTime() : (b.createdAt as any)?.seconds || 0;
                 return tB - tA; // Decrescente
             });
         }
 
         return projects;
 
-    } catch (e: any) {
-        console.error("Erro Firebase ao Listar:", e);
-        handleFirebaseError(e);
+    } catch (err) {
+        const error = err as Error;
+        console.error("Erro Firebase ao Listar:", error);
+        handleFirebaseError(error);
         return [];
     }
 };
@@ -415,7 +439,8 @@ export const getCloudProjects = async (organizationId?: string): Promise<any[]> 
 /**
  * Tratamento centralizado de erros do Firebase
  */
-function handleFirebaseError(e: any): never {
+function handleFirebaseError(err: unknown): never {
+    const e = err as { message?: string; code?: string };
     const msg = e.message || "";
     const code = e.code || "";
 

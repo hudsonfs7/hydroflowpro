@@ -71,6 +71,7 @@ export const DocumentToolsModal: React.FC<DocumentToolsModalProps> = ({ onClose,
         return (
             <ContractEditorModal 
                 metadata={projectData.metadata} 
+                fullProjectData={projectData}
                 userOrgName={userOrgName}
                 onClose={() => setShowContractEditor(false)} 
             />

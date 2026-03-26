@@ -16,6 +16,7 @@ interface NetworkPipeProps {
   demandDecimals?: number;
   showDemandValues?: boolean;
   globalScale?: number; 
+  reportMode?: boolean;
   handlers: {
     onClick: (e: React.MouseEvent | React.TouchEvent, id: string) => void;
     onDoubleClick: (e: React.MouseEvent | React.TouchEvent, id: string) => void;
@@ -32,6 +33,7 @@ interface NetworkNodeProps {
   globalLabelPos: LabelPosition;
   globalLabelOffset: number;
   globalScale?: number;
+  reportMode?: boolean;
   suctionNodeId?: string; 
   nodesContext?: Node[]; 
   pumpExtraData?: { H: number; Q: number; Pm: number }; 
@@ -64,7 +66,7 @@ const getPipeColor = (dn: number, isSelected: boolean): string => {
 // --- COMPONENTS ---
 
 export const NetworkPipe: React.FC<NetworkPipeProps> = ({ 
-  pipe, startNode, endNode, isSelected, material, result, unitSystem, flowUnit, handlers, demandDecimals = 4, showDemandValues = false, globalScale = 1
+  pipe, startNode, endNode, isSelected, material, result, unitSystem, flowUnit, handlers, demandDecimals = 4, showDemandValues = false, globalScale = 1, reportMode = false
 }) => {
     let pointsStr = `${startNode.x},${startNode.y} `;
     const safeVertices = (pipe.vertices || []).filter(v => v && typeof v.x === 'number' && !isNaN(v.x) && typeof v.y === 'number' && !isNaN(v.y)); 
@@ -103,7 +105,7 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
         else if (idLower.includes('ff') || idLower.includes('ferro')) simpleMatName = 'FoFo'; 
         else simpleMatName = material.name.split(' ')[0];
     }
-    const pipeLabel = `T${pipe.id.replace(/^p/i, '')} - ${simpleMatName} - DN${pipe.nominalDiameter || pipe.diameter}`; 
+    const pipeLabel = reportMode ? `${simpleMatName}` : `T${pipe.id.replace(/^p/i, '')} - ${simpleMatName} - DN${pipe.nominalDiameter || pipe.diameter}`; 
     const lenUnit = unitSystem === UnitSystem.SI ? 'm' : 'ft';
     
     let displayFlow = "0";
@@ -122,6 +124,8 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
     const strokeWidth = (isSelected ? 4 : 2) * globalScale; 
     const hitAreaWidth = 30 * globalScale; 
     const showText = globalScale > 0.4; 
+
+    const fontSize = (reportMode ? 14 : 10) * globalScale;
 
     return (
         <g 
@@ -142,9 +146,9 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
             )}
             {showText && (
                 <g transform={`translate(${labelX}, ${labelY}) rotate(${textAngle})`}>
-                    <text y={-12 * globalScale} textAnchor="middle" className="fill-slate-800 font-bold font-mono select-none pointer-events-none" style={{textShadow: '0px 0px 4px rgba(255,255,255,0.8)', fontSize: `${10 * globalScale}px`}}>{pipeLabel}</text>
-                    <text y={16 * globalScale} textAnchor="middle" className="fill-slate-600 font-mono select-none pointer-events-none" style={{textShadow: '0px 0px 4px rgba(255,255,255,0.8)', fontSize: `${10 * globalScale}px`}}>
-                        {showFlowValue ? `${displayFlow} ${flowUnit} - ` : ''}{lenDisplay}{lenUnit}
+                    <text y={-12 * globalScale} textAnchor="middle" className="fill-slate-800 font-bold font-mono select-none pointer-events-none" style={{textShadow: '0px 0px 4px rgba(255,255,255,0.8)', fontSize: `${fontSize}px`}}>{pipeLabel}</text>
+                    <text y={16 * globalScale} textAnchor="middle" className="fill-slate-600 font-mono select-none pointer-events-none" style={{textShadow: '0px 0px 4px rgba(255,255,255,0.8)', fontSize: `${fontSize}px`}}>
+                        {(!reportMode && showFlowValue) ? `${displayFlow} ${flowUnit} - ` : ''}{lenDisplay}{lenUnit}
                     </text>
                 </g>
             )}
@@ -153,7 +157,7 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
 };
 
 export const NetworkJunction: React.FC<NetworkNodeProps> = ({ 
-  node, isSelected, isDrawStart, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1 
+  node, isSelected, isDrawStart, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1, reportMode = false
 }) => {
     const cpVal = resultDisplay ? resultDisplay.cp : (node.elevation + (node.pressureHead || 0));
     const pVal = resultDisplay ? resultDisplay.p : (node.pressureHead || 0);
@@ -169,7 +173,7 @@ export const NetworkJunction: React.FC<NetworkNodeProps> = ({
     const rad = angle * (Math.PI / 180);
     const r = 10 * globalScale; 
     const diagLen = Math.max(10 * globalScale, globalLabelOffset * globalScale); 
-    const shelfLen = 60 * globalScale;
+    const shelfLen = (reportMode ? 40 : 60) * globalScale;
     const x1 = Math.cos(rad) * r;
     const y1 = Math.sin(rad) * r;
     const x2 = Math.cos(rad) * (r + diagLen);
@@ -192,7 +196,7 @@ export const NetworkJunction: React.FC<NetworkNodeProps> = ({
     const pDisp = (typeof pVal === 'number') ? pVal.toFixed(2) : "0.00";
     const showText = globalScale > 0.4;
     const fontSizeMain = 10 * globalScale;
-    const fontSizeLarge = 11 * globalScale;
+    const fontSizeLarge = (reportMode ? 14 : 11) * globalScale;
     const fontSizeSmall = 9 * globalScale;
 
     return (
@@ -209,8 +213,12 @@ export const NetworkJunction: React.FC<NetworkNodeProps> = ({
                 <>
                 <polyline points={`${x1},${y1} ${x2},${y2} ${x3},${y3}`} fill="none" stroke="#dc2626" strokeWidth={connectorWidth} />
                 <g>
-                    <text x={shelfMidX} y={yCP} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#dc2626" fontWeight="bold">CP={cpDisp}</text>
-                    <text x={shelfMidX} y={yCT} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#64748b">CT={ctDisp}</text>
+                    {!reportMode && (
+                        <>
+                            <text x={shelfMidX} y={yCP} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#dc2626" fontWeight="bold">CP={cpDisp}</text>
+                            <text x={shelfMidX} y={yCT} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#64748b">CT={ctDisp}</text>
+                        </>
+                    )}
                     <text x={pX} y={yP} textAnchor={pAnchor} fontSize={fontSizeLarge} fontFamily="monospace" fontWeight="bold" fill="#dc2626" dominantBaseline="middle">P={pDisp}</text>
                 </g>
                 </>

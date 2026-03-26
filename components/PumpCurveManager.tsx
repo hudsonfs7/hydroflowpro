@@ -64,7 +64,7 @@ export const PumpCurveManager: React.FC<PumpCurveManagerProps> = ({
     // Ideally, "Combate de Curvas" implies drawing the system resistance curve. 
     // Resistance R = H_op / Q_op^2.
     // Let's generate a synthetic system curve if we have an operating point to show the "Intersection".
-    const systemCurveData: any[] = [];
+    const systemCurveData: { x: number; sysY: number }[] = [];
     if (designFlow > 0 && designHead > 0) {
         const k_sys = designHead / Math.pow(designFlow, 2);
         for(let i=0; i<=designFlow*1.5; i+= (designFlow/10)) {
@@ -105,7 +105,7 @@ export const PumpCurveManager: React.FC<PumpCurveManagerProps> = ({
                         <Tooltip 
                             cursor={{ strokeDasharray: '3 3' }}
                             contentStyle={{ fontSize: '11px', borderRadius: '4px', border: '1px solid #e2e8f0' }}
-                            formatter={(val: any) => val?.toFixed(2)}
+                            formatter={(val: number | string) => typeof val === 'number' ? val.toFixed(2) : val}
                             labelFormatter={() => ''}
                         />
                         

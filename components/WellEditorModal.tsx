@@ -28,7 +28,14 @@ const AlignedInputGroup = ({ label, children, subLabel }: { label: string; child
     </div>
 );
 
-const TabButton = ({ active, onClick, label, icon }: any) => (
+interface TabButtonProps {
+    active: boolean;
+    onClick: () => void;
+    label: string;
+    icon: string | React.ReactNode;
+}
+
+const TabButton = ({ active, onClick, label, icon }: TabButtonProps) => (
     <button 
         type="button"
         onClick={onClick}

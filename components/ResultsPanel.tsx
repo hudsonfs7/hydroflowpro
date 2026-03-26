@@ -11,17 +11,20 @@ import {
   FilePdfIcon, TableIcon, SaveIcon, CheckIcon
 } from './Icons';
 
+import L from 'leaflet';
+import html2canvas from 'html2canvas';
+
 // Directional Control Component
+const Arrow = ({ rot }: { rot: number }) => (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" transform={`rotate(${rot})`}>
+        <path d="M7 17l9.2-9.2M17 17V7H7"/>
+    </svg>
+);
+
 export const DirectionControl = ({ value, onChange, size = "normal" }: { value: LabelPosition, onChange: (p: LabelPosition) => void, size?: "small"|"normal" }) => {
     const btnClass = `flex items-center justify-center rounded-md border transition-all ${size === "small" ? "w-8 h-8" : "w-10 h-10"}`;
     const activeClass = "bg-slate-700 text-white border-slate-800 shadow-sm";
     const inactiveClass = "bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600";
-
-    const Arrow = ({ rot }: { rot: number }) => (
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" transform={`rotate(${rot})`}>
-            <path d="M7 17l9.2-9.2M17 17V7H7"/>
-        </svg>
-    );
 
     return (
         <div className="grid grid-cols-2 gap-2 w-fit mx-auto">
@@ -73,10 +76,11 @@ export const GlobalSettingsInputs = ({ calcMethod, globalC, setGlobalC, globalRo
   );
 };
 
-export const ResultsContent = ({ 
-    calcError, calcWarning, results, nodes, pipes, materials, nodeResults, flowUnit, unitSystem,
-    selectedPipeId, setSelectedPipeId, setSelectedNodeId, setShowMobileResults, onOpenTable, calcMethod 
-}: any) => {
+export const ResultsContent = (props: any) => {
+    const { 
+        calcError, calcWarning, results, nodes, pipes, materials, nodeResults, flowUnit, unitSystem,
+        selectedPipeId, setSelectedPipeId, setSelectedNodeId, setShowMobileResults, onOpenTable, calcMethod, projectMetadata 
+    } = props;
     const [summarySortBy, setSummarySortBy] = useState<'id' | 'hl_total' | 'hl_unit' | 'velocity'>('id');
 
     const totals = useMemo(() => {
@@ -147,15 +151,63 @@ export const ResultsContent = ({
         }).slice(0, summarySortBy === 'id' ? 20 : 10);
     }, [results, summarySortBy]);
 
-    const handleExport = () => {
+    const [isExporting, setIsExporting] = useState(false);
+
+    const handleExport = async () => {
         if(!results.length) return;
-        const html = generateReportHtml({ 
-            nodes, pipes, results, nodeResults, materials, 
-            totals: { ...totals, flowDisplay: convertFlowFromSI(totals.flow, flowUnit).toFixed(2) }, 
-            flowUnit, unitSystem
-        });
-        const win = window.open('', '_blank');
-        if(win) { win.document.write(html); win.document.close(); }
+        setIsExporting(true);
+        
+        // Store original settings
+        const originalVis = { ...props.visSettings };
+        const originalStyle = props.mapStyle;
+
+        try {
+            // Set report mode for capture
+            props.setVisSettings({
+                ...originalVis,
+                reportMode: true,
+                baseScale: 1.5 // Increase scale for better visibility in report
+            });
+            props.setMapStyle('street'); // Ensure street map as requested
+
+            // Fit bounds to all nodes and pipe vertices
+            if (props.mapInstance) {
+                const bounds = L.latLngBounds(props.nodes.map((n: any) => n.geoPosition));
+                props.pipes.forEach((p: any) => p.vertices?.forEach((v: any) => bounds.extend(v.geoPosition)));
+                props.mapInstance.fitBounds(bounds, { padding: [50, 50] });
+            }
+
+            // Wait a bit for React to re-render with new settings
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            let mapImage = '';
+            const mapContainer = document.getElementById('network-map-container');
+            if (mapContainer) {
+                const canvas = await html2canvas(mapContainer, {
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: '#f8fafc',
+                    scale: 2 
+                });
+                mapImage = canvas.toDataURL('image/jpeg', 0.8);
+            }
+            
+            const html = generateReportHtml({ 
+                nodes, pipes, results, nodeResults, materials, 
+                totals: { ...totals, flowDisplay: convertFlowFromSI(totals.flow, flowUnit).toFixed(2) }, 
+                flowUnit, unitSystem, projectMetadata, calcMethod, mapImage
+            });
+            const win = window.open('', '_blank');
+            if(win) { win.document.write(html); win.document.close(); }
+        } catch (error) {
+            console.error('Error generating report:', error);
+            alert('Erro ao gerar relatório. Tente novamente.');
+        } finally {
+            // Restore original settings
+            props.setVisSettings(originalVis);
+            props.setMapStyle(originalStyle);
+            setIsExporting(false);
+        }
     };
 
     if (calcError) {
@@ -187,8 +239,8 @@ export const ResultsContent = ({
                  <button onClick={onOpenTable} className="flex-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-[11px] font-semibold py-2 rounded-md flex items-center justify-center gap-2 transition-colors">
                      <TableIcon /> Tabelas
                  </button>
-                 <button onClick={handleExport} className="flex-1 bg-slate-800 text-white hover:bg-slate-700 text-[11px] font-semibold py-2 rounded-md flex items-center justify-center gap-2 transition-colors shadow-sm">
-                     <FilePdfIcon /> Relatório
+                 <button onClick={handleExport} disabled={isExporting} className="flex-1 bg-slate-800 text-white hover:bg-slate-700 text-[11px] font-semibold py-2 rounded-md flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50">
+                     <FilePdfIcon /> {isExporting ? 'Gerando...' : 'Relatório'}
                  </button>
              </div>
 

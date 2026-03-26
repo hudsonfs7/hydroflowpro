@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { Material, Fitting, UnitSystem, LabelPosition } from '../types';
+import { Node, PipeSegment, Material, Fitting, UnitSystem, LabelPosition, GeoPosition, CoordinateFormat } from '../types';
 import { COMMON_FITTINGS } from '../constants';
 import { toUTM, fromUTM } from '../services/geoUtils';
 import { 
@@ -14,12 +14,20 @@ import {
 import { InputGroup, SmartNumberInput } from './CommonUI';
 import { DirectionControl } from './ResultsPanel';
 
-const BufferedInput = ({ value, onCommit, className, placeholder }: any) => {
+interface BufferedInputProps {
+    value: number | string | undefined | null;
+    onCommit: (val: number) => void;
+    className?: string;
+    placeholder?: string;
+}
+
+const BufferedInput = ({ value, onCommit, className, placeholder }: BufferedInputProps) => {
     const [localVal, setLocalVal] = useState(value !== undefined && value !== null ? value.toString() : '');
     const [isError, setIsError] = useState(false);
 
     useEffect(() => {
-        setLocalVal(value !== undefined && value !== null ? value.toString() : '');
+        const newVal = value !== undefined && value !== null ? value.toString() : '';
+        Promise.resolve().then(() => setLocalVal(newVal));
     }, [value]);
 
     const commit = () => {
@@ -58,6 +66,31 @@ const BufferedInput = ({ value, onCommit, className, placeholder }: any) => {
     );
 };
 
+interface EditorPanelProps {
+  selectedPipe?: PipeSegment;
+  selectedNode?: Node;
+  updatePipe: (id: string, data: Partial<PipeSegment>) => void;
+  updateNode: (id: string, data: Partial<Node>) => void;
+  pipes?: PipeSegment[];
+  nodes?: Node[];
+  materials: Material[];
+  addFitting: (pipeId: string, fitting: Fitting) => void;
+  updateFitting: (pipeId: string, fittingId: string, data: Partial<Fitting>) => void;
+  handleMaterialChange: (pipeId: string, matId: string) => void;
+  handleDiameterChange: (pipeId: string, dn: number) => void;
+  handleDeletePipe: (id: string) => void;
+  handleDeleteNode: (id: string) => void;
+  closeEditor: () => void;
+  unitSystem: UnitSystem;
+  flowUnit: string;
+  fetchElevation: (lat: number, lng: number) => Promise<number | null>;
+  isMapMode: boolean;
+  addVertex: (pipeId: string, pos: GeoPosition) => void;
+  resetVertices: (pipeId: string) => void;
+  coordFormat: CoordinateFormat;
+  calcMethod?: string;
+}
+
 export const EditorPanel = ({ 
   selectedPipe, 
   selectedNode, 
@@ -81,7 +114,7 @@ export const EditorPanel = ({
   resetVertices,
   coordFormat,
   calcMethod
-}: any) => {
+}: EditorPanelProps) => {
     if (!selectedPipe && !selectedNode) return (
       <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center opacity-60">
         <svg className="w-16 h-16 mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>

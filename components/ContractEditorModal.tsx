@@ -8,14 +8,16 @@ import { CloseIcon, FileSignatureIcon, PlusIcon, TrashIcon, CheckIcon, EyeIcon, 
 
 interface ContractEditorModalProps {
     metadata: ProjectMetadata;
+    fullProjectData?: any;
     userOrgName?: string;
     onClose: () => void;
 }
 
-export const ContractEditorModal: React.FC<ContractEditorModalProps> = ({ metadata, userOrgName, onClose }) => {
+export const ContractEditorModal: React.FC<ContractEditorModalProps> = ({ metadata, fullProjectData, userOrgName, onClose }) => {
     const [data, setData] = useState<ContractData | null>(null);
     const [mode, setMode] = useState<'edit' | 'preview'>('edit');
     const [orgDetails, setOrgDetails] = useState<Organization | undefined>(undefined);
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         const fetchOrgAndInit = async () => {
@@ -24,7 +26,12 @@ export const ContractEditorModal: React.FC<ContractEditorModalProps> = ({ metada
                 org = await getOrganizationDetails(metadata.organizationId);
                 if (org) setOrgDetails(org);
             }
-            setData(getDefaultContractData(metadata, userOrgName, org));
+            
+            if (metadata.savedContract) {
+                setData(metadata.savedContract);
+            } else {
+                setData(getDefaultContractData(metadata, userOrgName, org));
+            }
         };
         fetchOrgAndInit();
     }, [metadata, userOrgName]);
@@ -59,6 +66,34 @@ export const ContractEditorModal: React.FC<ContractEditorModalProps> = ({ metada
         if (win) {
             win.document.write(html);
             win.document.close();
+        }
+    };
+
+    const handleSaveDraft = async () => {
+        if (!data || !metadata._id || !fullProjectData) {
+            alert("Não é possível salvar o rascunho. O projeto precisa estar salvo na nuvem primeiro.");
+            return;
+        }
+        
+        setIsSaving(true);
+        try {
+            const { updateProjectInCloud } = await import('../services/firebaseService');
+            const updatedMetadata = { ...metadata, savedContract: data };
+            const updatedProjectData = { ...fullProjectData, metadata: updatedMetadata };
+            
+            await updateProjectInCloud(metadata._id, metadata.name, updatedProjectData);
+            alert("Contrato salvo com sucesso! Você pode fechar e voltar mais tarde.");
+        } catch (e: any) {
+            console.error(e);
+            alert("Erro ao salvar o contrato: " + e.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleRestoreDefault = () => {
+        if (confirm("Deseja restaurar o contrato para o texto padrão? Todas as edições manuais serão perdidas.")) {
+            setData(getDefaultContractData(metadata, userOrgName, orgDetails));
         }
     };
 
@@ -259,19 +294,41 @@ export const ContractEditorModal: React.FC<ContractEditorModalProps> = ({ metada
                 </div>
 
                 {/* Footer Actions */}
-                <div className="p-4 border-t border-slate-200 bg-white flex justify-end gap-3 shrink-0">
-                    <button 
-                        onClick={onClose}
-                        className="px-6 py-3 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm"
-                    >
-                        Cancelar
-                    </button>
-                    <button 
-                        onClick={handlePrint}
-                        className="px-8 py-3 bg-slate-800 text-white font-bold rounded-xl shadow-lg hover:bg-slate-900 transition-all flex items-center gap-2 text-sm"
-                    >
-                        <SaveIcon /> Imprimir / Salvar PDF
-                    </button>
+                <div className="p-4 border-t border-slate-200 bg-white flex justify-between items-center shrink-0">
+                    <div>
+                        <button 
+                            onClick={handleRestoreDefault}
+                            className="px-4 py-2 text-slate-500 hover:text-red-500 hover:bg-red-50 font-bold rounded-xl transition-colors text-xs uppercase"
+                        >
+                            Restaurar Padrão
+                        </button>
+                    </div>
+                    <div className="flex gap-3">
+                        <button 
+                            onClick={onClose}
+                            className="px-6 py-3 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm"
+                        >
+                            Fechar
+                        </button>
+                        <button 
+                            onClick={handleSaveDraft}
+                            disabled={isSaving || !metadata._id || !fullProjectData}
+                            className={`px-6 py-3 font-bold rounded-xl transition-all flex items-center gap-2 text-sm ${
+                                isSaving || !metadata._id || !fullProjectData 
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                            }`}
+                            title={(!metadata._id || !fullProjectData) ? "Salve o projeto na nuvem primeiro para habilitar" : "Salvar edições no banco de dados"}
+                        >
+                            <SaveIcon /> {isSaving ? 'Salvando...' : 'Salvar Edições'}
+                        </button>
+                        <button 
+                            onClick={handlePrint}
+                            className="px-8 py-3 bg-slate-800 text-white font-bold rounded-xl shadow-lg hover:bg-slate-900 transition-all flex items-center gap-2 text-sm"
+                        >
+                            <FileSignatureIcon /> Imprimir / Gerar PDF
+                        </button>
+                    </div>
                 </div>
             </div>
         </ModalContainer>

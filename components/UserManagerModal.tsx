@@ -97,8 +97,9 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ onClose }) =
             }
             await fetchData();
             setView('list_orgs');
-        } catch (e: any) {
-            alert("Erro: " + e.message);
+        } catch (err) {
+            const error = err as Error;
+            alert("Erro: " + error.message);
         } finally {
             setLoading(false);
         }
@@ -110,8 +111,9 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ onClose }) =
         try {
             await deleteOrganization(id);
             await fetchData();
-        } catch (e: any) {
-            alert("Erro: " + e.message);
+        } catch (err) {
+            const error = err as Error;
+            alert("Erro: " + error.message);
         } finally {
             setLoading(false);
         }
@@ -138,7 +140,7 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ onClose }) =
         e.preventDefault();
         setLoading(true);
         try {
-            const userData: any = { username, organizationId: selectedOrgId };
+            const userData: Partial<User> & { password?: string } = { username, organizationId: selectedOrgId };
             if (password) userData.password = password; // Only update/set password if provided
 
             if (editingId) {
@@ -149,8 +151,9 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ onClose }) =
             }
             await fetchData();
             setView('list_users');
-        } catch (e: any) {
-            alert("Erro: " + e.message);
+        } catch (err) {
+            const error = err as Error;
+            alert("Erro: " + error.message);
         } finally {
             setLoading(false);
         }
@@ -170,8 +173,9 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ onClose }) =
             await deleteUser(userToDelete.id);
             await fetchData();
             setUserToDelete(null);
-        } catch (e: any) {
-            alert("Erro ao excluir: " + e.message);
+        } catch (err) {
+            const error = err as Error;
+            alert("Erro ao excluir: " + error.message);
         } finally {
             setLoading(false);
         }
@@ -180,11 +184,11 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ onClose }) =
     const getOrgName = (id: string) => organizations.find(o => o.id === id)?.name || "---";
 
     // Filtering
-    const filteredUsers = users.filter(u => u.username.toLowerCase().includes(searchTerm.toLowerCase()) || getOrgName(u.organizationId).toLowerCase().includes(searchTerm.toLowerCase()));
-    const filteredOrgs = organizations.filter(o => o.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const filteredUsers = users.filter((u: User) => u.username.toLowerCase().includes(searchTerm.toLowerCase()) || getOrgName(u.organizationId).toLowerCase().includes(searchTerm.toLowerCase()));
+    const filteredOrgs = organizations.filter((o: Organization) => o.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
     // Available users for transfer (excluding the one being deleted)
-    const transferOptions = users.filter(u => userToDelete && u.id !== userToDelete.id && u.organizationId === userToDelete.organizationId);
+    const transferOptions = users.filter((u: User) => userToDelete && u.id !== userToDelete.id && u.organizationId === userToDelete.organizationId);
 
     return (
         <ModalContainer onClose={onClose} zIndex="z-[6000]">

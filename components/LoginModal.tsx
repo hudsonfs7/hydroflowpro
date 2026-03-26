@@ -8,9 +8,10 @@ import { User } from '../types';
 interface LoginModalProps {
     onClose: () => void;
     onLoginSuccess: (user: User) => void;
+    showClose?: boolean;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess }) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess, showClose = true }) => {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
@@ -28,8 +29,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess 
             } else {
                 setError("Credenciais inválidas.");
             }
-        } catch (err: any) {
-            setError("Erro ao conectar: " + err.message);
+        } catch (err: unknown) {
+            setError("Erro ao conectar: " + (err instanceof Error ? err.message : String(err)));
         } finally {
             setLoading(false);
         }
@@ -39,7 +40,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onLoginSuccess 
         <ModalContainer onClose={onClose} zIndex="z-[8000]">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-slide-up border border-slate-200">
                 <div className="bg-slate-800 p-6 flex flex-col items-center justify-center text-white relative">
-                    <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"><CloseIcon/></button>
+                    {showClose && <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"><CloseIcon/></button>}
                     <div className="bg-slate-700 p-3 rounded-full mb-3">
                         <LockIcon />
                     </div>

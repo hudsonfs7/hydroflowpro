@@ -47,9 +47,10 @@ const OrganizationSelectorModal = ({ organizations, onClose, onSelect, onRefresh
             alert("Empresa cadastrada com sucesso!");
             onRefresh();
             onSelect({ id, ...newOrg }); // Seleciona automaticamente a criada
-        } catch (err) {
-            alert("Erro ao cadastrar empresa.");
-        } finally {
+    } catch (err: unknown) {
+        console.error(err);
+        alert("Erro ao cadastrar empresa.");
+    } finally {
             setLoading(false);
         }
     };
@@ -182,6 +183,7 @@ const OrganizationSelectorModal = ({ organizations, onClose, onSelect, onRefresh
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose, onSave, onDelete, initialData, userOrgName, currentUser }) => {
   const [formData, setFormData] = useState<ProjectMetadata>(() => initialData || {
     name: '',
+    studyName: '',
     company: '',
     companyCnpj: '',
     consultant: '',
@@ -222,9 +224,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose,
 
   useEffect(() => {
       if (!isMaster && userOrgName && !formData.consultant) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setFormData(prev => ({ ...prev, consultant: userOrgName, organizationId: currentUser?.organizationId }));
       }
-  }, [userOrgName, isMaster, currentUser]);
+  }, [userOrgName, isMaster, currentUser, formData.consultant]);
 
   const evteExpiration = useMemo(() => {
     if (!formData.evteDate || !formData.hasEvte) return '---';
@@ -314,16 +317,28 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose,
         
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-              <InputGroup label="Nome do Empreendimento">
-                <input 
-                  type="text" 
-                  required
-                  className={UNIFORM_INPUT_STYLE}
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  placeholder="Ex: Condomínio Solar das Águas"
-                />
-              </InputGroup>
+              <div className="flex flex-col gap-4">
+                  <InputGroup label="Nome do Empreendimento">
+                    <input 
+                      type="text" 
+                      required
+                      className={UNIFORM_INPUT_STYLE}
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      placeholder="Ex: Condomínio Solar das Águas"
+                    />
+                  </InputGroup>
+                  <InputGroup label="Identificação do Estudo">
+                    <input 
+                      type="text" 
+                      required
+                      className={UNIFORM_INPUT_STYLE}
+                      value={formData.studyName || ''}
+                      onChange={e => setFormData({...formData, studyName: e.target.value})}
+                      placeholder="Ex: Estudo de dimensionamento de abastecimento Palhinha"
+                    />
+                  </InputGroup>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="relative">

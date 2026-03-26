@@ -50,7 +50,7 @@ export const BottomBar: React.FC<BottomBarProps> = ({
                 </button>
 
                 {/* 2. MENU INSERIR (Nó, Poço, Reservatório, Bomba) */}
-                <div ref={menuRef as any} className="relative flex-1 h-full border-x border-slate-50">
+                <div ref={menuRef as React.RefObject<HTMLDivElement>} className="relative flex-1 h-full border-x border-slate-50">
                     {showNodeMenu && (
                         <div className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 w-48 bg-white shadow-2xl rounded-xl border border-slate-200 py-1 flex flex-col z-[110] animate-slide-up-center origin-bottom overflow-hidden ring-1 ring-black/5">
                             <button 

@@ -1,14 +1,26 @@
 
 import React, { useState } from 'react';
-import { Node, PipeSegment, Material, UnitSystem, CalcMethod } from '../types';
-import { convertFlowFromSI } from '../services/calcService';
-import { TableIcon, CloseIcon } from './Icons';
+import { Node, PipeSegment, Material, UnitSystem, CalculationResult, NodeResult } from '../types';
 import { ModalContainer } from './CommonUI';
+import { TableIcon, CloseIcon } from './Icons';
+import { convertFlowFromSI } from '../services/calcService';
 
-export const FlexTableModal = ({ onClose, pipes, nodes, results, nodeResults, materials, flowUnit, unitSystem, calcMethod }: any) => {
+interface FlexTableModalProps {
+    onClose: () => void;
+    pipes: PipeSegment[];
+    nodes: Node[];
+    results: CalculationResult[];
+    nodeResults?: NodeResult[];
+    materials: Material[];
+    flowUnit: string;
+    unitSystem: UnitSystem;
+    calcMethod: string;
+}
+
+export const FlexTableModal = ({ onClose, pipes, nodes, results, nodeResults, materials, flowUnit, unitSystem }: FlexTableModalProps) => {
     const [tab, setTab] = useState<'pipes' | 'nodes'>('pipes');
-    const nodeResMap = new Map();
-    if(nodeResults) nodeResults.forEach((nr:any) => nodeResMap.set(nr.nodeId, nr));
+    const nodeResMap = new Map<string, NodeResult>();
+    if(nodeResults) nodeResults.forEach((nr: NodeResult) => nodeResMap.set(nr.nodeId, nr));
 
     const nodeRows = nodes.map((n: Node) => {
         const res = nodeResMap.get(n.id);
@@ -18,7 +30,7 @@ export const FlexTableModal = ({ onClose, pipes, nodes, results, nodeResults, ma
     });
 
     const pipeRows = pipes.map((p: PipeSegment) => {
-        const res = results.find((r: any) => r.segmentId === p.id);
+        const res = results.find((r: CalculationResult) => r.segmentId === p.id);
         const mat = materials.find((m: Material) => m.id === p.materialId);
         return {
             ...p, matName: mat?.name.split(' ')[0] || 'Unknown',
@@ -49,7 +61,7 @@ export const FlexTableModal = ({ onClose, pipes, nodes, results, nodeResults, ma
                         <table className="min-w-full divide-y divide-slate-200">
                             <thead><tr><th className={thClass}>ID</th><th className={thClass}>DN</th><th className={thClass}>Vazão ({flowUnit})</th><th className={thClass}>Vel. (m/s)</th><th className={thClass}>Hf (m)</th><th className={thClass}>Regime</th></tr></thead>
                             <tbody className="bg-white divide-y divide-slate-100">
-                                {pipeRows.map((row: any) => (
+                                {pipeRows.map((row) => (
                                     <tr key={row.id} className="hover:bg-slate-50">
                                         <td className={tdClass}>{row.id}</td><td className={tdClass}>{row.nominalDiameter}</td>
                                         <td className={`${tdClass} text-blue-600`}>{Math.abs(convertFlowFromSI(row.flowRate, flowUnit)).toFixed(2)}</td>
@@ -63,7 +75,7 @@ export const FlexTableModal = ({ onClose, pipes, nodes, results, nodeResults, ma
                         <table className="min-w-full divide-y divide-slate-200">
                             <thead><tr><th className={thClass}>ID</th><th className={thClass}>Nome</th><th className={thClass}>Cota Piez. (m)</th><th className={thClass}>Pressão (mca)</th></tr></thead>
                             <tbody className="bg-white divide-y divide-slate-100">
-                                {nodeRows.map((row: any) => (
+                                {nodeRows.map((row) => (
                                     <tr key={row.id} className="hover:bg-slate-50">
                                         <td className={tdClass}>{row.id}</td><td className={tdClass}>{row.name}</td>
                                         <td className={tdClass}>{row.cp?.toFixed(2)}</td>
