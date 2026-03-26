@@ -50,7 +50,7 @@ export const generateReportHtml = (projectData: any) => {
     .presentation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 11px; }
     .presentation-grid div strong { color: #475569; }
 
-    h1 { font-size: 18px; color: #0f172a; margin: 20px 0 10px 0; border-left: 4px solid #3b82f6; padding-left: 10px; }
+    h1 { font-size: 18px; color: #0f172a; margin: 20px 0 10px 0; border-left: 4px solid #3b82f6; padding-left: 10px; text-transform: uppercase; }
     h2 { font-size: 14px; color: #334155; margin: 15px 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em; }
     
     table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 20px; }
@@ -169,7 +169,6 @@ export const generateReportHtml = (projectData: any) => {
       return `<tr>
         <td>${n.id}</td>
         <td>${n.name || '-'}</td>
-        <td>${n.type === 'source' ? 'Fonte' : n.type === 'pump' ? 'Bomba' : 'Demanda'}</td>
         <td class="text-right">${safeFixed(n.elevation)}</td>
         <td class="text-right">${n.baseDemand || 0}</td>
         <td class="text-right">${safeFixed(cp)}</td>
@@ -416,7 +415,9 @@ export const generateReportHtml = (projectData: any) => {
                   <div style="background-color: #fee2e2; color: #b91c1c; padding: 4px 6px; border-radius: 4px; margin-bottom: 4px; border-left: 3px solid #ef4444; display: inline-block;">
                       <strong>⚠️ ATENÇÃO - FRETE CIF:</strong> Embasa Rua Buerarema, Parque ETA, S/N - Itamaraju-BA. CEP: 45836-000.
                   </div><br/>
-                  &bull; <strong>DIFAL</strong> incluso nos impostos.
+                  <div style="background-color: #fef08a; color: #854d0e; padding: 4px 6px; border-radius: 4px; margin-bottom: 4px; border-left: 3px solid #eab308; display: inline-block;">
+                      <strong>⚠️ ATENÇÃO:</strong> Declarar DIFAL nos impostos.
+                  </div>
               </div>
           </div>`;
       });
@@ -453,7 +454,7 @@ export const generateReportHtml = (projectData: any) => {
                     <div><strong>Localidade:</strong> ${projectMetadata?.city ? projectMetadata.city + (projectMetadata?.state ? ' - ' + projectMetadata.state : '') : (location || '-')}</div>
                     <div><strong>Pessoas Atendidas:</strong> ${peopleServed || '-'}</div>
                     <div><strong>Vazão Total do Sistema:</strong> ${totals?.flowDisplay || '0.00'} ${flowUnit}</div>
-                    <div><strong>Método de Cálculo:</strong> ${calcMethodName} (${calcMethod === 'darcy-weisbach' ? 'e' : 'C'})</div>
+                    <div><strong>Método de Cálculo:</strong> ${calcMethodName} (${results && results.length > 0 ? results[0].roughnessUsed : (calcMethod === 'darcy-weisbach' ? 'e' : 'C')})</div>
                     <div><strong>Data de Emissão:</strong> ${date}</div>
                 </div>
             </div>
@@ -499,7 +500,6 @@ export const generateReportHtml = (projectData: any) => {
                     <tr>
                         <th>ID</th>
                         <th>Nome</th>
-                        <th>Tipo</th>
                         <th class="text-right">Elev. (m)</th>
                         <th class="text-right">Demanda</th>
                         <th class="text-right">Cota Piez. (m)</th>
