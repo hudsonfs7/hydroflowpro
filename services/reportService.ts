@@ -183,7 +183,7 @@ export const generateReportHtml = (projectData: any) => {
   if (minElev === Infinity) minElev = 0; if (maxCotaPiez === -Infinity) maxCotaPiez = 0; if (maxPress === -Infinity) maxPress = 0; if (minPress === Infinity) minPress = 0;
 
   const verificationsHtml = `
-  <h2>1. Verificações do Dimensionamento</h2>
+  <h2>3. Verificações do Dimensionamento</h2>
   <table>
       <thead>
           <tr>
@@ -221,25 +221,7 @@ export const generateReportHtml = (projectData: any) => {
       </tbody>
   </table>`;
 
-  const usedMaterialIds = new Set((pipes || []).map((p: PipeSegment) => p.materialId));
-  const usedMaterials = (materials || []).filter((m: Material) => usedMaterialIds.has(m.id));
-  
-  let diamTableHTML = `<div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">`;
-  usedMaterials.forEach(m => {
-      diamTableHTML += `
-      <table style="flex: 1; min-width: 160px; margin-bottom: 0;">
-          <thead>
-              <tr><th colspan="2" style="background:#1e40af; color:white; text-align:center; font-size:10px;">${m.name}</th></tr>
-              <tr><th class="text-center">DN</th><th class="text-center">DI (mm)</th></tr>
-          </thead>
-          <tbody>
-              ${(m.availableDiameters || []).map(d => `
-              <tr><td class="text-center font-bold">${d.dn}</td><td class="text-center">${d.di.toFixed(2)}</td></tr>
-              `).join('')}
-          </tbody>
-      </table>`;
-  });
-  diamTableHTML += `</div>`;
+
 
   const formulaUniversal = calcMethod === 'darcy-weisbach' 
         ? `<tr>
@@ -254,7 +236,7 @@ export const generateReportHtml = (projectData: any) => {
            </tr>`;
 
   const formulasHtml = `
-  <h2>3. Fórmulas Aplicadas</h2>
+  <h2>4. Fórmulas Aplicadas</h2>
   <table>
       <thead>
           <tr><th colspan="3" style="background:#1e40af; color:white; text-align:center;">MÉTODO DE DIMENSIONAMENTO: ${calcMethodName.toUpperCase()}</th></tr>
@@ -355,7 +337,7 @@ export const generateReportHtml = (projectData: any) => {
           const opY = mapY(opHead);
 
           const fmtQ = (qNum: number) => { 
-                const qM3 = flowUnit === 'L/s' ? qNum * 3.6 : (flowUnit === 'm³/day' ? qNum / 24 : qNum); 
+                const qM3 = flowUnit.toLowerCase() === 'l/s' ? qNum * 3.6 : (flowUnit === 'm³/day' ? qNum / 24 : qNum); 
                 return `${safeFixed(qNum)} ${flowUnit} (${safeFixed(qM3)} m³/h)`; 
           };
 
@@ -408,10 +390,11 @@ export const generateReportHtml = (projectData: any) => {
               </div>
               <div style="background: #fff8f1; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 15px; font-size: 10px; color: #78350f; text-align: left; border-radius: 4px;">
                   <strong style="font-size: 11px; display:block; margin-bottom: 4px;">OBSERVAÇÕES PARA COTAÇÃO DO CONJUNTO MOTOBOMBA:</strong>
-                  &bull; O motor, se da marca WEG, deve ser da linha IR03 (04 POLOS).<br/>
+                  &bull; O motor, se da marca WEG, deve ser da linha IR03.<br/>
+                  &bull; 04 polos.<br/>
+                  &bull; Líquido a bombear: Água Tratada.<br/>
                   &bull; Favor encaminhar catálogo completo do equipamento junto à proposta preliminar.<br/>
                   <br/>
-                  <strong style="font-size: 11px; display:block; margin-bottom: 4px;">AO CADASTRAR COTAÇÃO, CONSIDERAR:</strong>
                   &bull; <strong>FRETE CIF:</strong> Embasa Rua Buerarema, Parque ETA, S/N - Itamaraju-BA. CEP: 45836-000.<br/>
                   &bull; <strong>DIFAL</strong> incluso nos impostos.<br/>
                   &bull; Considerar <strong>Condições de pagamento</strong> padrão.
@@ -453,15 +436,7 @@ export const generateReportHtml = (projectData: any) => {
                 </div>
             </div>
             
-            ${verificationsHtml}
-            ${formulasHtml}
-            
-            <h2>2. Diâmetros Internos Utilizados</h2>
-            ${diamTableHTML}
-
-            <div style="page-break-after: always; padding-top: 10px;"></div>
-
-            <h1>4. Quantitativo de Materiais</h1>
+            <h1>1. Quantitativo de Materiais</h1>
             <table>
                 <thead>
                     <tr>
@@ -473,7 +448,7 @@ export const generateReportHtml = (projectData: any) => {
                 <tbody>${quantitativoRows}</tbody>
             </table>
 
-            <h1>5. Detalhamento das Tubulações</h1>
+            <h1>2. Detalhamento das Tubulações</h1>
             <table>
                 <thead>
                     <tr>
@@ -492,7 +467,7 @@ export const generateReportHtml = (projectData: any) => {
                 <tbody>${pipeRows}</tbody>
             </table>
 
-            <h2>5.1. Dados dos Nós</h2>
+            <h2>2.1. Dados dos Nós</h2>
             <table>
                 <thead>
                     <tr>
@@ -508,6 +483,11 @@ export const generateReportHtml = (projectData: any) => {
                 <tbody>${nodeRows}</tbody>
             </table>
             
+            <div style="margin-top: 30px;">
+                ${verificationsHtml}
+                ${formulasHtml}
+            </div>
+            
             <div class="footer">Relatório Gerado por HydroFlow Pro</div>
         </div>
 
@@ -521,7 +501,7 @@ export const generateReportHtml = (projectData: any) => {
                 </div>
             </div>
             
-            <h1>6. Conjunto Motobomba e Curvas de Performance</h1>
+            <h1>5. Conjunto Motobomba e Curvas de Performance</h1>
             ${cmbContent}
             
             <div class="footer">Relatório Gerado por HydroFlow Pro</div>
@@ -537,7 +517,7 @@ export const generateReportHtml = (projectData: any) => {
                 </div>
             </div>
             
-            <h1>7. Croqui da Rede Hidráulica</h1>
+            <h1>6. Croqui da Rede Hidráulica</h1>
             <div class="croqui-container">
                 ${mapImage ? `<img src="${mapImage}" class="croqui-img" alt="Croqui da rede" />` : '<div class="chart-placeholder">Mapa não disponível</div>'}
             </div>
