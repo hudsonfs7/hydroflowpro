@@ -13,27 +13,34 @@ const calculatePowerCV = (flow: number, head: number, unit: FlowUnit, efficiency
 };
 
 export const generateReportHtml = (projectData: any) => {
-  const { nodes, pipes, results, nodeResults, totals, flowUnit, unitSystem, materials, projectMetadata, calcMethod, mapImage } = projectData;
-  const date = new Date().toLocaleDateString('pt-BR');
-  
-  const studyName = projectMetadata?.studyName || projectMetadata?.name || 'Projeto Sem Nome';
-  const location = projectMetadata?.location || '';
-  const peopleServed = projectMetadata?.peopleServed || '';
-  const calcMethodName = calcMethod === 'darcy-weisbach' ? 'Darcy-Weisbach' : 'Hazen-Williams';
-  
-  const getNodeRes = (id: string) => {
-      if (!nodeResults) return null;
-      if (nodeResults instanceof Map) return nodeResults.get(id);
-      if (Array.isArray(nodeResults)) return nodeResults.find((n: any) => n.nodeId === id);
-      return null;
-  };
+    const { nodes, pipes, results, nodeResults, totals, flowUnit, unitSystem, materials, projectMetadata, calcMethod, mapImage, globalC, globalRoughness } = projectData;
+    const date = new Date().toLocaleDateString('pt-BR');
 
-  const safeFixed = (val: any, digits: number = 2) => {
-      if (typeof val === 'number' && !isNaN(val)) return val.toFixed(digits);
-      return "0.00";
-  };
+    const studyName = projectMetadata?.studyName || projectMetadata?.name || 'Projeto Sem Nome';
+    const location = projectMetadata?.location || '';
 
-  const style = `
+    // Cálculo de Pessoas Atendidas e Ligações
+    const hab = projectMetadata?.lotsHab || 0;
+    const dom = projectMetadata?.habDomRate || 0;
+    const att = (projectMetadata?.attendanceRate !== undefined ? projectMetadata.attendanceRate : 100) / 100;
+    const calculatedPeople = Math.round(hab * dom * att);
+    const totalLots = (projectMetadata?.lotsHab || 0) + (projectMetadata?.lotsCom || 0) + (projectMetadata?.lotsInst || 0);
+
+    const calcMethodName = calcMethod?.toString().toLowerCase().includes('darcy') ? 'Darcy-Weisbach' : 'Hazen-Williams';
+
+    const getNodeRes = (id: string) => {
+        if (!nodeResults) return null;
+        if (nodeResults instanceof Map) return nodeResults.get(id);
+        if (Array.isArray(nodeResults)) return nodeResults.find((n: any) => n.nodeId === id);
+        return null;
+    };
+
+    const safeFixed = (val: any, digits: number = 2) => {
+        if (typeof val === 'number' && !isNaN(val)) return val.toFixed(digits);
+        return "0.00";
+    };
+
+    const style = `
     @page { size: A4 portrait; margin: 15mm; }
     @page landscape-page { size: A4 landscape; margin: 10mm; }
     
@@ -85,32 +92,32 @@ export const generateReportHtml = (projectData: any) => {
     }
   `;
 
-  // Quantitativo de Material e DN
-  const quantitativoMap = new Map<string, number>();
-  (pipes || []).forEach((p: PipeSegment) => {
-      const matObj = materials ? materials.find((m: Material) => m.id === p.materialId) : null;
-      const matName = matObj ? matObj.name : p.materialId || "Desconhecido";
-      const key = `${matName}|${p.nominalDiameter}`;
-      quantitativoMap.set(key, (quantitativoMap.get(key) || 0) + p.length);
-  });
+    // Quantitativo de Material e DN
+    const quantitativoMap = new Map<string, number>();
+    (pipes || []).forEach((p: PipeSegment) => {
+        const matObj = materials ? materials.find((m: Material) => m.id === p.materialId) : null;
+        const matName = matObj ? matObj.name : p.materialId || "Desconhecido";
+        const key = `${matName}|${p.nominalDiameter}`;
+        quantitativoMap.set(key, (quantitativoMap.get(key) || 0) + p.length);
+    });
 
-  const quantitativoRows = Array.from(quantitativoMap.entries()).map(([key, length]) => {
-      const [mat, dn] = key.split('|');
-      
-      const matObj = materials ? materials.find((m: Material) => m.name === mat) : null;
-      let di = '-';
-      if (matObj && matObj.availableDiameters) {
-          const dObj = matObj.availableDiameters.find((d: any) => String(d.dn) === String(dn));
-          if (dObj) di = dObj.di.toFixed(2);
-      }
-      
-      const matLower = mat.toLowerCase();
-      const multiplo = (matLower.includes('pead') || matLower.includes('p.e.a.d')) ? 100 : 6;
-      
-      const numTubos = Math.ceil((length * 1.1) / multiplo);
-      const necM = numTubos * multiplo;
+    const quantitativoRows = Array.from(quantitativoMap.entries()).map(([key, length]) => {
+        const [mat, dn] = key.split('|');
 
-      return `<tr>
+        const matObj = materials ? materials.find((m: Material) => m.name === mat) : null;
+        let di = '-';
+        if (matObj && matObj.availableDiameters) {
+            const dObj = matObj.availableDiameters.find((d: any) => String(d.dn) === String(dn));
+            if (dObj) di = dObj.di.toFixed(2);
+        }
+
+        const matLower = mat.toLowerCase();
+        const multiplo = (matLower.includes('pead') || matLower.includes('p.e.a.d')) ? 100 : 6;
+
+        const numTubos = Math.ceil((length * 1.1) / multiplo);
+        const necM = numTubos * multiplo;
+
+        return `<tr>
           <td>${mat}</td>
           <td class="text-center font-bold" style="background: #f1f5f9; color: #1e40af;">${dn}</td>
           <td class="text-center">${di}</td>
@@ -118,26 +125,26 @@ export const generateReportHtml = (projectData: any) => {
           <td class="text-right font-bold text-blue-700">${necM}</td>
           <td class="text-center font-bold text-red-600">${numTubos}</td>
       </tr>`;
-  }).join('');
+    }).join('');
 
-  const pipeRows = (pipes || []).map((p: PipeSegment) => {
-      const res = results ? results.find((r: any) => r.segmentId === p.id) : null;
-      const flowVal = res ? Math.abs(convertFlowFromSI(res.flowRate, flowUnit)) : 0;
-      const vel = res ? res.velocity : 0;
-      const hl = res ? res.totalHeadLoss : 0;
-      const hlUnit = res ? res.unitHeadLoss : 0;
-      const matObj = materials ? materials.find((m: Material) => m.id === p.materialId) : null;
-      const matFull = matObj ? matObj.name : p.materialId || "Desconhecido";
-      
-      const isDW = calcMethod === 'darcy-weisbach';
-      let coeffValue = 0;
-      if (isDW) {
-          coeffValue = p.customRoughness !== undefined ? p.customRoughness : (matObj ? matObj.roughness : 0);
-      } else {
-          coeffValue = p.customC !== undefined ? p.customC : (matObj ? matObj.hwCoefficient : 0);
-      }
-      
-      return `<tr>
+    const pipeRows = (pipes || []).map((p: PipeSegment) => {
+        const res = results ? results.find((r: any) => r.segmentId === p.id) : null;
+        const flowVal = res ? Math.abs(convertFlowFromSI(res.flowRate, flowUnit)) : 0;
+        const vel = res ? res.velocity : 0;
+        const hl = res ? res.totalHeadLoss : 0;
+        const hlUnit = res ? res.unitHeadLoss : 0;
+        const matObj = materials ? materials.find((m: Material) => m.id === p.materialId) : null;
+        const matFull = matObj ? matObj.name : p.materialId || "Desconhecido";
+
+        const isDW = calcMethod?.toString().toLowerCase().includes('darcy');
+        let coeffValue: any = 0;
+        if (isDW) {
+            coeffValue = p.customRoughness !== undefined ? p.customRoughness : (globalRoughness || (matObj ? matObj.roughness : 0));
+        } else {
+            coeffValue = p.customC !== undefined ? p.customC : (globalC || (matObj ? matObj.hwCoefficient : 0));
+        }
+
+        return `<tr>
         <td>${p.id.replace('p', 'T')}</td>
         <td>${p.startNodeId} → ${p.endNodeId}</td>
         <td class="text-right">${safeFixed(p.length, 1)}</td>
@@ -149,24 +156,24 @@ export const generateReportHtml = (projectData: any) => {
         <td class="text-right">${safeFixed(hl)}</td>
         <td class="text-right">${safeFixed(hlUnit)}</td>
       </tr>`;
-  }).join('');
+    }).join('');
 
-  const nodeRows = (nodes || []).map((n: Node) => {
-      let rawRes = getNodeRes(n.id);
-      let cp = n.elevation;
-      let p = n.pressureHead || 0;
+    const nodeRows = (nodes || []).map((n: Node) => {
+        let rawRes = getNodeRes(n.id);
+        let cp = n.elevation;
+        let p = n.pressureHead || 0;
 
-      if (rawRes) {
-          const h = rawRes.head !== undefined ? rawRes.head : rawRes.cp;
-          const pr = rawRes.pressure !== undefined ? rawRes.pressure : rawRes.p;
-          if (unitSystem === UnitSystem.SI) {
-              cp = h; p = pr;
-          } else {
-              cp = h / 0.3048; p = pr / 0.3048;
-          }
-      }
+        if (rawRes) {
+            const h = rawRes.head !== undefined ? rawRes.head : rawRes.cp;
+            const pr = rawRes.pressure !== undefined ? rawRes.pressure : rawRes.p;
+            if (unitSystem === UnitSystem.SI) {
+                cp = h; p = pr;
+            } else {
+                cp = h / 0.3048; p = pr / 0.3048;
+            }
+        }
 
-      return `<tr>
+        return `<tr>
         <td>${n.id}</td>
         <td>${n.name || '-'}</td>
         <td class="text-right">${safeFixed(n.elevation)}</td>
@@ -174,33 +181,33 @@ export const generateReportHtml = (projectData: any) => {
         <td class="text-right">${safeFixed(cp)}</td>
         <td class="text-right font-bold">${safeFixed(p)}</td>
       </tr>`;
-  }).join('');
+    }).join('');
 
-  let maxJ = 0; let maxVel = 0;
-  if (results) {
-      results.forEach((r: any) => {
-          if (r.unitHeadLoss > maxJ) maxJ = r.unitHeadLoss;
-          if (r.velocity > maxVel) maxVel = r.velocity;
-      });
-  }
-  let maxCotaPiez = -Infinity, minElev = Infinity, maxPress = -Infinity, minPress = Infinity;
-  (nodes || []).forEach((n: Node) => {
-      let rawRes = getNodeRes(n.id);
-      let cp = n.elevation, p = n.pressureHead || 0;
-      if (rawRes) {
-          const h = rawRes.head !== undefined ? rawRes.head : rawRes.cp;
-          const pr = rawRes.pressure !== undefined ? rawRes.pressure : rawRes.p;
-          if (unitSystem === UnitSystem.SI) { cp = h; p = pr; } else { cp = h / 0.3048; p = pr / 0.3048; }
-      }
-      if (cp > maxCotaPiez) maxCotaPiez = cp;
-      if (n.elevation < minElev) minElev = n.elevation;
-      if (p > maxPress) maxPress = p;
-      if (p < minPress) minPress = p;
-  });
-  if (minElev === Infinity) minElev = 0; if (maxCotaPiez === -Infinity) maxCotaPiez = 0; if (maxPress === -Infinity) maxPress = 0; if (minPress === Infinity) minPress = 0;
+    let maxJ = 0; let maxVel = 0;
+    if (results) {
+        results.forEach((r: any) => {
+            if (r.unitHeadLoss > maxJ) maxJ = r.unitHeadLoss;
+            if (r.velocity > maxVel) maxVel = r.velocity;
+        });
+    }
+    let maxCotaPiez = -Infinity, minElev = Infinity, maxPress = -Infinity, minPress = Infinity;
+    (nodes || []).forEach((n: Node) => {
+        let rawRes = getNodeRes(n.id);
+        let cp = n.elevation, p = n.pressureHead || 0;
+        if (rawRes) {
+            const h = rawRes.head !== undefined ? rawRes.head : rawRes.cp;
+            const pr = rawRes.pressure !== undefined ? rawRes.pressure : rawRes.p;
+            if (unitSystem === UnitSystem.SI) { cp = h; p = pr; } else { cp = h / 0.3048; p = pr / 0.3048; }
+        }
+        if (cp > maxCotaPiez) maxCotaPiez = cp;
+        if (n.elevation < minElev) minElev = n.elevation;
+        if (p > maxPress) maxPress = p;
+        if (p < minPress) minPress = p;
+    });
+    if (minElev === Infinity) minElev = 0; if (maxCotaPiez === -Infinity) maxCotaPiez = 0; if (maxPress === -Infinity) maxPress = 0; if (minPress === Infinity) minPress = 0;
 
-  const verificationsHtml = `
-  <h2>3. Verificações do Dimensionamento</h2>
+    const verificationsHtml = `
+  <h2>2.2. Verificações do Dimensionamento</h2>
   <table>
       <thead>
           <tr>
@@ -240,7 +247,7 @@ export const generateReportHtml = (projectData: any) => {
 
 
 
-  const formulaUniversal = calcMethod === 'darcy-weisbach' 
+    const formulaUniversal = calcMethod?.toString().toLowerCase().includes('darcy')
         ? `<tr>
               <td style="background:#3b82f6; color:white; font-weight:bold; width: 25%;">Fórmula Universal</td>
               <td style="background:#eff6ff; color:#1e40af; font-weight:bold; text-align:center; width: 35%;">hf = f . ( L / D ) . ( V² / 2g )</td>
@@ -252,8 +259,8 @@ export const generateReportHtml = (projectData: any) => {
               <td style="font-size: 9px;">C = Coeficiente, L = Extensão (m), D = Diâm. Interno (m), Q = Vazão (m³/s)</td>
            </tr>`;
 
-  const formulasHtml = `
-  <h2>4. Fórmulas Aplicadas</h2>
+    const formulasHtml = `
+  <h2>2.3. Fórmulas Aplicadas</h2>
   <table>
       <thead>
           <tr><th colspan="3" style="background:#1e40af; color:white; text-align:center;">MÉTODO DE DIMENSIONAMENTO: ${calcMethodName.toUpperCase()}</th></tr>
@@ -273,92 +280,92 @@ export const generateReportHtml = (projectData: any) => {
       </tbody>
   </table>`;
 
-  const pumps = (nodes || []).filter((n: Node) => n.type === 'pump');
-  let cmbContent = '';
-  if (pumps.length > 0) {
-      const pumpOrientations = getPumpOrientations(nodes, pipes);
-      pumps.forEach((p: Node) => {
-          const config = p.cmbConfig;
-          if (!config) return;
-          
-          let actualFlow = 0;
-          let actualHead = 0;
-          const suctionId = pumpOrientations.get(p.id);
-          const suctionRes = suctionId ? getNodeRes(suctionId) : undefined;
-          const res = getNodeRes(p.id);
-          
-          (pipes || []).filter((pipe: PipeSegment) => (pipe.startNodeId === p.id || pipe.endNodeId === p.id) && (pipe.startNodeId !== suctionId && pipe.endNodeId !== suctionId)).forEach((pipe: PipeSegment) => {
-              const pr = results ? results.find((r: any) => r.segmentId === pipe.id) : null;
-              if (pr) actualFlow += Math.abs(convertFlowFromSI(pr.flowRate, flowUnit));
-          });
-          
-          const getHead = (nr: any, def: number) => {
-              if (!nr) return def;
-              const h = nr.head !== undefined ? nr.head : nr.cp;
-              return unitSystem === UnitSystem.SI ? h : h / 0.3048;
-          };
-          
-          const hMontante = getHead(suctionRes, p.elevation);
-          const hJusante = getHead(res, p.elevation);
-          actualHead = Math.max(0, hJusante - hMontante);
+    const pumps = (nodes || []).filter((n: Node) => n.type === 'pump');
+    let cmbContent = '';
+    if (pumps.length > 0) {
+        const pumpOrientations = getPumpOrientations(nodes, pipes);
+        pumps.forEach((p: Node) => {
+            const config = p.cmbConfig;
+            if (!config) return;
 
-          const sysReqFlow = actualFlow || config.designFlow || 0;
-          const sysReqHead = actualHead || config.designHead || 0;
+            let actualFlow = 0;
+            let actualHead = 0;
+            const suctionId = pumpOrientations.get(p.id);
+            const suctionRes = suctionId ? getNodeRes(suctionId) : undefined;
+            const res = getNodeRes(p.id);
 
-          const Hstat = sysReqHead * 0.4;
-          const k_sys = sysReqFlow > 0 ? (sysReqHead - Hstat) / Math.pow(sysReqFlow, 2) : 0;
+            (pipes || []).filter((pipe: PipeSegment) => (pipe.startNodeId === p.id || pipe.endNodeId === p.id) && (pipe.startNodeId !== suctionId && pipe.endNodeId !== suctionId)).forEach((pipe: PipeSegment) => {
+                const pr = results ? results.find((r: any) => r.segmentId === pipe.id) : null;
+                if (pr) actualFlow += Math.abs(convertFlowFromSI(pr.flowRate, flowUnit));
+            });
 
-          const Qd = config.designFlow || 0;
-          const Hd = config.designHead || 0;
-          const H0 = config.curveType === '3-point' && config.shutoffHead ? config.shutoffHead : 1.33 * Hd;
-          const A = Qd > 0 ? (H0 - Hd) / Math.pow(Qd, 2) : 0;
+            const getHead = (nr: any, def: number) => {
+                if (!nr) return def;
+                const h = nr.head !== undefined ? nr.head : nr.cp;
+                return unitSystem === UnitSystem.SI ? h : h / 0.3048;
+            };
 
-          let opFlow = 0;
-          let opHead = 0;
-          if (A + k_sys > 0 && H0 > Hstat) {
-              opFlow = Math.sqrt((H0 - Hstat) / (A + k_sys));
-              opHead = H0 - A * Math.pow(opFlow, 2);
-          }
-          
-          const powerCV = calculatePowerCV(opFlow, opHead, flowUnit, config.efficiency || 70);
-          
-          const q_max = A > 0 ? Math.sqrt(H0 / A) : Qd * 1.5;
-          const plotMax = Math.max(q_max, sysReqFlow * 1.3, opFlow * 1.2) || 1;
-          const maxHeadPlot = Math.max(H0, sysReqHead * 1.2, opHead * 1.2) || 1;
-          
-          const mapX = (q: number) => 40 + (q / plotMax) * 340;
-          const mapY = (h: number) => 210 - (h / maxHeadPlot) * 190;
-          
-          let pumpPath = "";
-          let sysPath = "";
-          
-          for (let i = 0; i <= 50; i++) {
-              const q = (plotMax * i) / 50;
-              const pumpHead = Math.max(0, H0 - A * Math.pow(q, 2));
-              const sysHead = Hstat + k_sys * Math.pow(q, 2);
-              
-              const px = mapX(q);
-              const pyPump = mapY(pumpHead);
-              const pySys = mapY(sysHead);
-              
-              if (i === 0) {
-                  pumpPath += `M ${px} ${pyPump} `;
-                  sysPath += `M ${px} ${pySys} `;
-              } else {
-                  pumpPath += `L ${px} ${pyPump} `;
-                  sysPath += `L ${px} ${pySys} `;
-              }
-          }
-          
-          const opX = mapX(opFlow);
-          const opY = mapY(opHead);
+            const hMontante = getHead(suctionRes, p.elevation);
+            const hJusante = getHead(res, p.elevation);
+            actualHead = Math.max(0, hJusante - hMontante);
 
-          const fmtQ = (qNum: number) => { 
-                const qM3 = flowUnit.toLowerCase() === 'l/s' ? qNum * 3.6 : (flowUnit === 'm³/day' ? qNum / 24 : qNum); 
-                return `${safeFixed(qNum)} ${flowUnit} (${safeFixed(qM3)} m³/h)`; 
-          };
+            const sysReqFlow = actualFlow || config.designFlow || 0;
+            const sysReqHead = actualHead || config.designHead || 0;
 
-          cmbContent += `
+            const Hstat = sysReqHead * 0.4;
+            const k_sys = sysReqFlow > 0 ? (sysReqHead - Hstat) / Math.pow(sysReqFlow, 2) : 0;
+
+            const Qd = config.designFlow || 0;
+            const Hd = config.designHead || 0;
+            const H0 = config.curveType === '3-point' && config.shutoffHead ? config.shutoffHead : 1.33 * Hd;
+            const A = Qd > 0 ? (H0 - Hd) / Math.pow(Qd, 2) : 0;
+
+            let opFlow = 0;
+            let opHead = 0;
+            if (A + k_sys > 0 && H0 > Hstat) {
+                opFlow = Math.sqrt((H0 - Hstat) / (A + k_sys));
+                opHead = H0 - A * Math.pow(opFlow, 2);
+            }
+
+            const powerCV = calculatePowerCV(opFlow, opHead, flowUnit, config.efficiency || 70);
+
+            const q_max = A > 0 ? Math.sqrt(H0 / A) : Qd * 1.5;
+            const plotMax = Math.max(q_max, sysReqFlow * 1.3, opFlow * 1.2) || 1;
+            const maxHeadPlot = Math.max(H0, sysReqHead * 1.2, opHead * 1.2) || 1;
+
+            const mapX = (q: number) => 40 + (q / plotMax) * 340;
+            const mapY = (h: number) => 210 - (h / maxHeadPlot) * 190;
+
+            let pumpPath = "";
+            let sysPath = "";
+
+            for (let i = 0; i <= 50; i++) {
+                const q = (plotMax * i) / 50;
+                const pumpHead = Math.max(0, H0 - A * Math.pow(q, 2));
+                const sysHead = Hstat + k_sys * Math.pow(q, 2);
+
+                const px = mapX(q);
+                const pyPump = mapY(pumpHead);
+                const pySys = mapY(sysHead);
+
+                if (i === 0) {
+                    pumpPath += `M ${px} ${pyPump} `;
+                    sysPath += `M ${px} ${pySys} `;
+                } else {
+                    pumpPath += `L ${px} ${pyPump} `;
+                    sysPath += `L ${px} ${pySys} `;
+                }
+            }
+
+            const opX = mapX(opFlow);
+            const opY = mapY(opHead);
+
+            const fmtQ = (qNum: number) => {
+                const qM3 = flowUnit.toLowerCase() === 'l/s' ? qNum * 3.6 : (flowUnit === 'm³/day' ? qNum / 24 : qNum);
+                return `${safeFixed(qNum)} ${flowUnit} (${safeFixed(qM3)} m³/h)`;
+            };
+
+            cmbContent += `
           <div class="pump-container">
               <h2 style="color: #1e40af; margin-top: 0;">${p.name || 'Bomba ' + p.id}</h2>
               <div class="pump-grid">
@@ -394,11 +401,11 @@ export const generateReportHtml = (projectData: any) => {
                       <text x="12" y="115" text-anchor="middle" font-size="12" fill="#475569" font-weight="bold" transform="rotate(-90 12 115)">AMT (mca)</text>
                       
                       <text x="${mapX(0)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">0</text>
-                      <text x="${mapX(plotMax/2)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">${safeFixed(plotMax/2, 1)}</text>
+                      <text x="${mapX(plotMax / 2)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">${safeFixed(plotMax / 2, 1)}</text>
                       <text x="${mapX(plotMax)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">${safeFixed(plotMax, 1)}</text>
                       
                       <text x="32" y="${mapY(maxHeadPlot)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">${safeFixed(maxHeadPlot, 0)}</text>
-                      <text x="32" y="${mapY(maxHeadPlot/2)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">${safeFixed(maxHeadPlot/2, 0)}</text>
+                      <text x="32" y="${mapY(maxHeadPlot / 2)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">${safeFixed(maxHeadPlot / 2, 0)}</text>
                       <text x="32" y="${mapY(0)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">0</text>
                   </svg>
                   <div style="font-size: 11px; margin-top: 8px; color: #475569; background: #f8fafc; padding: 5px; border-radius: 4px; display: inline-block;">
@@ -420,16 +427,16 @@ export const generateReportHtml = (projectData: any) => {
                   </div>
               </div>
           </div>`;
-      });
-  } else {
-      cmbContent = '<p style="color: #94a3b8; text-align: center; padding: 40px;">Nenhum Conjunto Motobomba configurado neste projeto.</p>';
-  }
+        });
+    } else {
+        cmbContent = '<p style="color: #94a3b8; text-align: center; padding: 40px;">Nenhum Conjunto Motobomba configurado neste projeto.</p>';
+    }
 
-  return `
+    return `
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Relatório Técnico - ${studyName}</title>
+        <title>Relatório Técnico - ${studyName.toUpperCase()}</title>
         <meta charset="utf-8" />
         <style>${style}</style>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -440,7 +447,7 @@ export const generateReportHtml = (projectData: any) => {
             <div class="header">
                 <div class="header-title">HydroFlow Pro</div>
                 <div class="header-meta">
-                    <strong>PROJETO:</strong> ${studyName}<br/>
+                    <strong>PROJETO:</strong> ${studyName.toUpperCase()}<br/>
                     <strong>DATA:</strong> ${date}
                 </div>
             </div>
@@ -448,13 +455,14 @@ export const generateReportHtml = (projectData: any) => {
             <div class="presentation-box">
                 <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">OBJETO</div>
                 <div style="font-size: 18px; font-weight: 800; color: #1e40af; margin-bottom: 12px; text-transform: uppercase;">
-                    ${studyName}
+                    ${studyName.toUpperCase()}
                 </div>
                 <div class="presentation-grid">
-                    <div><strong>Localidade:</strong> ${projectMetadata?.city ? projectMetadata.city + (projectMetadata?.state ? ' - ' + projectMetadata.state : '') : (location || '-')}</div>
-                    <div><strong>Pessoas Atendidas:</strong> ${peopleServed || '-'}</div>
+                    <div><strong>Localidade:</strong> ${(projectMetadata?.city ? projectMetadata.city + (projectMetadata?.state ? ' - ' + projectMetadata.state : '') : (location || '-')).toUpperCase()}</div>
+                    <div><strong>Pessoas Atendidas:</strong> ${calculatedPeople}</div>
+                    <div><strong>Número de Ligações:</strong> ${totalLots}</div>
                     <div><strong>Vazão Total do Sistema:</strong> ${totals?.flowDisplay || '0.00'} ${flowUnit}</div>
-                    <div><strong>Método de Cálculo:</strong> ${calcMethodName} (${results && results.length > 0 ? results[0].roughnessUsed : (calcMethod === 'darcy-weisbach' ? 'e' : 'C')})</div>
+                    <div><strong>Método de Cálculo:</strong> ${calcMethodName} (${calcMethod?.toString().toLowerCase().includes('darcy') ? (globalRoughness || 'Mat.') : (globalC || 'Mat.')})</div>
                     <div><strong>Data de Emissão:</strong> ${date}</div>
                 </div>
             </div>
@@ -484,7 +492,7 @@ export const generateReportHtml = (projectData: any) => {
                         <th class="text-right">Extensão (m)</th>
                         <th class="text-right">DN (mm)</th>
                         <th>Material</th>
-                        <th class="text-right">${calcMethod === 'darcy-weisbach' ? 'Rug.' : 'C'}</th>
+                        <th class="text-right">${calcMethod?.toString().toLowerCase().includes('darcy') ? 'Rug.' : 'C'}</th>
                         <th class="text-right">Vazão (${flowUnit})</th>
                         <th class="text-right">Vel. (m/s)</th>
                         <th class="text-right">Perda (m)</th>
@@ -527,7 +535,7 @@ export const generateReportHtml = (projectData: any) => {
                 </div>
             </div>
             
-            <h1>5. Conjunto Motobomba e Curvas de Performance</h1>
+            <h1>3. Conjunto Motobomba</h1>
             ${cmbContent}
             
             <div class="footer">Relatório Gerado por HydroFlow Pro</div>
@@ -543,7 +551,7 @@ export const generateReportHtml = (projectData: any) => {
                 </div>
             </div>
             
-            <h1>6. Croqui da Rede Hidráulica</h1>
+            <h1>4. Croqui da Rede Hidráulica</h1>
             <div class="croqui-container">
                 ${mapImage ? `<img src="${mapImage}" class="croqui-img" alt="Croqui da rede" />` : '<div class="chart-placeholder">Mapa não disponível</div>'}
             </div>

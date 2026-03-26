@@ -69,7 +69,9 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
       projectData.results, 
       projectData.nodeResults, 
       calcMethod, 
-      flowUnit
+      flowUnit,
+      globalC,
+      globalRoughness
     );
   };
 

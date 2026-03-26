@@ -79,7 +79,8 @@ export const GlobalSettingsInputs = ({ calcMethod, globalC, setGlobalC, globalRo
 export const ResultsContent = (props: any) => {
     const { 
         calcError, calcWarning, results, nodes, pipes, materials, nodeResults, flowUnit, unitSystem,
-        selectedPipeId, setSelectedPipeId, setSelectedNodeId, setShowMobileResults, onOpenTable, calcMethod, projectMetadata 
+        selectedPipeId, setSelectedPipeId, setSelectedNodeId, setShowMobileResults, onOpenTable, calcMethod, projectMetadata,
+        globalC, globalRoughness
     } = props;
     const [summarySortBy, setSummarySortBy] = useState<'id' | 'hl_total' | 'hl_unit' | 'velocity'>('id');
 
@@ -195,7 +196,8 @@ export const ResultsContent = (props: any) => {
             const html = generateReportHtml({ 
                 nodes, pipes, results, nodeResults, materials, 
                 totals: { ...totals, flowDisplay: convertFlowFromSI(totals.flow, flowUnit).toFixed(2) }, 
-                flowUnit, unitSystem, projectMetadata, calcMethod, mapImage
+                flowUnit, unitSystem, projectMetadata, calcMethod, mapImage,
+                globalC, globalRoughness
             });
             const win = window.open('', '_blank');
             if(win) { win.document.write(html); win.document.close(); }

@@ -720,9 +720,12 @@ export default function App() {
                 const orgId = data.organizationId || currentUser?.organizationId || 'legacy';
                 const metadataWithId = { ...data, _id: existingId, organizationId: orgId };
                 setProjectMetadata(metadataWithId);
+                
+                const settings = { unitSystem, flowUnit, calcMethod, frictionMethod, solverType, globalC, globalRoughness, mapStyle, mapOpacity, coordFormat, visSettings, nodeLabelPos, nodeLabelOffset };
+
                 if (isProjectManagerOpen) {
                     try {
-                        const proj = { version: "1.5", metadata: metadataWithId, date: new Date().toISOString(), nodes, pipes, demandGroups, annotations, annotationGroups, mdConfig };
+                        const proj = { version: "1.5", metadata: metadataWithId, date: new Date().toISOString(), nodes, pipes, demandGroups, annotations, annotationGroups, mdConfig, settings };
                         if (existingId) {
                             await updateProjectInCloud(existingId, data.name, proj);
                             showValidationToast("Projeto atualizado com sucesso!");
@@ -740,7 +743,7 @@ export default function App() {
                     // if they created the first project, we can auto-load it
                     try {
                         const orgId = data.organizationId || currentUser?.organizationId || 'legacy';
-                        const proj = { version: "1.5", metadata: metadataWithId, date: new Date().toISOString(), nodes: [], pipes: [], demandGroups: [] };
+                        const proj = { version: "1.5", metadata: metadataWithId, date: new Date().toISOString(), nodes: [], pipes: [], demandGroups: [], settings };
                         const newId = await saveProjectToCloud(data.name, proj, orgId);
                         setProjectMetadata({ ...metadataWithId, _id: newId });
                         setNodes([]); setPipes([]); setDemandGroups([]);
@@ -909,10 +912,10 @@ export default function App() {
                         setShowProjectMenu(false); 
                         const calculationSummary = {
                             studyName: projectMetadata?.studyName || projectMetadata?.name || 'Não identificado',
-                            calcMethod: calcMethod === 'darcy-weisbach' ? 'Darcy-Weisbach' : 'Hazen-Williams',
+                            calcMethod: calcMethod?.toString().toLowerCase().includes('darcy') ? 'Darcy-Weisbach' : 'Hazen-Williams',
                             solverEngine: solverType,
-                            globalCoefficient: calcMethod === 'darcy-weisbach' ? globalRoughness || 'Padrão do material' : globalC || 'Padrão do material',
-                            isCustomCoefficient: !!(calcMethod === 'darcy-weisbach' ? globalRoughness : globalC)
+                            globalCoefficient: calcMethod?.toString().toLowerCase().includes('darcy') ? globalRoughness || 'Padrão do material' : globalC || 'Padrão do material',
+                            isCustomCoefficient: !!(calcMethod?.toString().toLowerCase().includes('darcy') ? globalRoughness : globalC)
                         };
                         const proj = { version: "1.5", metadata: projectMetadata, calculationSummary, date: new Date().toISOString(), nodes, pipes, demandGroups, annotations, annotationGroups, mdConfig, settings: { unitSystem, flowUnit, calcMethod, frictionMethod, solverType, globalC, globalRoughness, mapStyle, mapOpacity, coordFormat, visSettings, nodeLabelPos, nodeLabelOffset } }; 
                         const blob = new Blob([JSON.stringify(proj, null, 2)], { type: 'application/json' }); 
@@ -943,11 +946,21 @@ export default function App() {
                                     if (data.settings) {
                                         if (data.settings.unitSystem) setUnitSystem(data.settings.unitSystem as UnitSystem);
                                         if (data.settings.flowUnit) setFlowUnit(data.settings.flowUnit as FlowUnit);
-                                        if (data.settings.calcMethod) setCalcMethod(data.settings.calcMethod as CalcMethod);
+                                        
+                                        // Robust loading for Calculation Method
+                                        if (data.settings.calcMethod) {
+                                            const methodStr = String(data.settings.calcMethod).toLowerCase();
+                                            if (methodStr.includes('hazen')) setCalcMethod(CalcMethod.HAZEN_WILLIAMS);
+                                            else if (methodStr.includes('darcy')) setCalcMethod(CalcMethod.DARCY_WEISBACH);
+                                        }
+
                                         if (data.settings.frictionMethod) setFrictionMethod(data.settings.frictionMethod as FrictionMethod);
                                         if (data.settings.solverType) setSolverType(data.settings.solverType as SolverType);
-                                        if (data.settings.globalC !== undefined) setGlobalC(data.settings.globalC);
-                                        if (data.settings.globalRoughness !== undefined) setGlobalRoughness(data.settings.globalRoughness);
+                                        
+                                        // Ensure global coefficients are strings and fallback to empty string if undefined
+                                        setGlobalC(data.settings.globalC !== undefined ? String(data.settings.globalC) : '');
+                                        setGlobalRoughness(data.settings.globalRoughness !== undefined ? String(data.settings.globalRoughness) : '');
+                                        
                                         if (data.settings.mapStyle) setMapStyle(data.settings.mapStyle as MapStyle);
                                         if (data.settings.mapOpacity !== undefined) setMapOpacity(data.settings.mapOpacity);
                                         if (data.settings.coordFormat) setCoordFormat(data.settings.coordFormat as CoordinateFormat);
@@ -1098,7 +1111,7 @@ export default function App() {
            </div>
            <div className="flex-1 p-4 overflow-y-auto">
                <React.Suspense fallback={null}>
-                   {sidebarMode === 'results' ? <ResultsContent calcError={calcError} calcWarning={calcWarning} results={snapshot?.results || []} nodes={snapshot?.nodes || []} pipes={snapshot?.pipes || []} materials={materials} nodeResults={snapshot?.nodeResults} flowUnit={flowUnit} unitSystem={unitSystem} selectedPipeId={selectedPipeId} setSelectedPipeId={setSelectedPipeId} setSelectedNodeId={setSelectedNodeId} setShowMobileResults={setShowSidebar} onOpenTable={() => setActiveModal({ type: 'FLEX_TABLE' })} calcMethod={calcMethod} projectMetadata={projectMetadata} visSettings={visSettings} setVisSettings={setVisSettings} mapStyle={mapStyle} setMapStyle={setMapStyle} mapInstance={mapInstance} />
+                   {sidebarMode === 'results' ? <ResultsContent calcError={calcError} calcWarning={calcWarning} results={snapshot?.results || []} nodes={snapshot?.nodes || []} pipes={snapshot?.pipes || []} materials={materials} nodeResults={snapshot?.nodeResults} flowUnit={flowUnit} unitSystem={unitSystem} selectedPipeId={selectedPipeId} setSelectedPipeId={setSelectedPipeId} setSelectedNodeId={setSelectedNodeId} setShowMobileResults={setShowSidebar} onOpenTable={() => setActiveModal({ type: 'FLEX_TABLE' })} calcMethod={calcMethod} projectMetadata={projectMetadata} visSettings={visSettings} setVisSettings={setVisSettings} mapStyle={mapStyle} setMapStyle={setMapStyle} mapInstance={mapInstance} globalC={globalC} globalRoughness={globalRoughness} />
                    : <div className="animate-fade-in">{selectedPipeId && <EditorPanel selectedPipe={pipes.find(p => p.id === selectedPipeId)} updatePipe={updatePipe} materials={materials} addFitting={addFittingToPipe} updateFitting={updateFittingInPipe} handleMaterialChange={changePipeMaterial} handleDiameterChange={handleDiameterChange} handleDeletePipe={removePipe} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} addVertex={addPipeVertex} resetVertices={(id: any) => updatePipe(id, { vertices: [] })} />}{selectedNodeId && <EditorPanel selectedNode={nodes.find(n => n.id === selectedNodeId)} updateNode={updateNode} handleDeleteNode={removeNode} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} fetchElevation={fetchElevation} isMapMode={isMapMode} coordFormat={coordFormat} />}{selectedAnnotationId && <AnnotationEditor annotation={annotations.find(a => a.id === selectedAnnotationId)!} onUpdate={updateAnnotation} onDelete={(id) => { removeAnnotation(id); setSelectedAnnotationId(null); setShowSidebar(false); }} onClose={() => setShowSidebar(false)} />}</div>}
                </React.Suspense>
            </div>
@@ -1138,6 +1151,34 @@ export default function App() {
                       if (data.mdConfig) setMdConfig(data.mdConfig);
                       if (data.demandGroups) setDemandGroups(data.demandGroups);
                       if (data.annotations) setAnnotations(data.annotations);
+                      if (data.annotationGroups) setAnnotationGroups(data.annotationGroups);
+                      
+                      if (data.settings) {
+                          if (data.settings.unitSystem) setUnitSystem(data.settings.unitSystem as UnitSystem);
+                          if (data.settings.flowUnit) setFlowUnit(data.settings.flowUnit as FlowUnit);
+                          
+                          // Robust loading for Calculation Method
+                          if (data.settings.calcMethod) {
+                              const methodStr = String(data.settings.calcMethod).toLowerCase();
+                              if (methodStr.includes('hazen')) setCalcMethod(CalcMethod.HAZEN_WILLIAMS);
+                              else if (methodStr.includes('darcy')) setCalcMethod(CalcMethod.DARCY_WEISBACH);
+                          }
+
+                          if (data.settings.frictionMethod) setFrictionMethod(data.settings.frictionMethod as FrictionMethod);
+                          if (data.settings.solverType) setSolverType(data.settings.solverType as SolverType);
+                          
+                          // Ensure global coefficients are strings and fallback to empty string if undefined
+                          setGlobalC(data.settings.globalC !== undefined ? String(data.settings.globalC) : '');
+                          setGlobalRoughness(data.settings.globalRoughness !== undefined ? String(data.settings.globalRoughness) : '');
+
+                          if (data.settings.mapStyle) setMapStyle(data.settings.mapStyle as MapStyle);
+                          if (data.settings.mapOpacity !== undefined) setMapOpacity(data.settings.mapOpacity);
+                          if (data.settings.coordFormat) setCoordFormat(data.settings.coordFormat as CoordinateFormat);
+                          if (data.settings.visSettings) setVisSettings(data.settings.visSettings);
+                          if (data.settings.nodeLabelPos) setNodeLabelPos(data.settings.nodeLabelPos as LabelPosition);
+                          if (data.settings.nodeLabelOffset !== undefined) setNodeLabelOffset(data.settings.nodeLabelOffset);
+                      }
+                      
                       setSnapshot(null);
                       showValidationToast(`Empreendimento "${data.metadata?.name || 'Sem Nome'}" carregado!`);
                       setIsProjectManagerOpen(false);
@@ -1162,6 +1203,33 @@ export default function App() {
                           if (data.annotations) setAnnotations(data.annotations); else setAnnotations([]);
                           if (data.annotationGroups) setAnnotationGroups(data.annotationGroups);
                           if (data.mdConfig) setMdConfig(data.mdConfig);
+                          
+                          if (data.settings) {
+                              if (data.settings.unitSystem) setUnitSystem(data.settings.unitSystem as UnitSystem);
+                              if (data.settings.flowUnit) setFlowUnit(data.settings.flowUnit as FlowUnit);
+                              
+                              // Robust loading for Calculation Method
+                              if (data.settings.calcMethod) {
+                                  const methodStr = String(data.settings.calcMethod).toLowerCase();
+                                  if (methodStr.includes('hazen')) setCalcMethod(CalcMethod.HAZEN_WILLIAMS);
+                                  else if (methodStr.includes('darcy')) setCalcMethod(CalcMethod.DARCY_WEISBACH);
+                              }
+
+                              if (data.settings.frictionMethod) setFrictionMethod(data.settings.frictionMethod as FrictionMethod);
+                              if (data.settings.solverType) setSolverType(data.settings.solverType as SolverType);
+                              
+                              // Ensure global coefficients are strings and fallback to empty string if undefined
+                              setGlobalC(data.settings.globalC !== undefined ? String(data.settings.globalC) : '');
+                              setGlobalRoughness(data.settings.globalRoughness !== undefined ? String(data.settings.globalRoughness) : '');
+
+                              if (data.settings.mapStyle) setMapStyle(data.settings.mapStyle as MapStyle);
+                              if (data.settings.mapOpacity !== undefined) setMapOpacity(data.settings.mapOpacity);
+                              if (data.settings.coordFormat) setCoordFormat(data.settings.coordFormat as CoordinateFormat);
+                              if (data.settings.visSettings) setVisSettings(data.settings.visSettings);
+                              if (data.settings.nodeLabelPos) setNodeLabelPos(data.settings.nodeLabelPos as LabelPosition);
+                              if (data.settings.nodeLabelOffset !== undefined) setNodeLabelOffset(data.settings.nodeLabelOffset);
+                          }
+
                           setSnapshot(null);
                           setIsProjectSelectorOpen(false);
                           showValidationToast(`Empreendimento "${data.metadata?.name || 'Carregado'}" aberto no mapa!`);

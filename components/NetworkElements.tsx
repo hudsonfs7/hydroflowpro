@@ -75,12 +75,40 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
 
     let labelX, labelY, baseAngle;
     const pts = [{x: startNode.x, y: startNode.y}, ...safeVertices, {x: endNode.x, y: endNode.y}];
-    const segIdx = Math.max(0, Math.floor((pts.length - 1) / 2));
-    const s1 = pts[segIdx]; const s2 = pts[segIdx + 1];
+    
+    // Calcula a distância total do tubo (em pixels na tela)
+    let totalDist = 0;
+    const segDists: number[] = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+        const dx = pts[i+1].x - pts[i].x;
+        const dy = pts[i+1].y - pts[i].y;
+        const d = Math.sqrt(dx*dx + dy*dy);
+        segDists.push(d);
+        totalDist += d;
+    }
+    
+    // Encontra o ponto exato no meio da distância total
+    const midDist = totalDist / 2;
+    let accum = 0;
+    let targetSeg = 0;
+    let ratio = 0.5;
+    
+    for (let i = 0; i < segDists.length; i++) {
+        if (accum + segDists[i] >= midDist) {
+            targetSeg = i;
+            // Evita divisão por zero
+            ratio = segDists[i] > 0 ? (midDist - accum) / segDists[i] : 0.5;
+            break;
+        }
+        accum += segDists[i];
+    }
+    
+    const s1 = pts[targetSeg];
+    const s2 = pts[targetSeg + 1];
     
     if (s1 && s2) { 
-        labelX = (s1.x + s2.x) / 2; 
-        labelY = (s1.y + s2.y) / 2; 
+        labelX = s1.x + (s2.x - s1.x) * ratio;
+        labelY = s1.y + (s2.y - s1.y) * ratio;
         const angleRad = Math.atan2(s2.y - s1.y, s2.x - s1.x); 
         baseAngle = angleRad * 180 / Math.PI; 
     } else { 

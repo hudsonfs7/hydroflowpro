@@ -9,7 +9,9 @@ export const generateMD = (
   results: CalculationResult[],
   nodeResults: any[],
   calcMethod: CalcMethod,
-  flowUnit: FlowUnit
+  flowUnit: FlowUnit,
+  globalC?: string,
+  globalRoughness?: string
 ) => {
   const ResidentsCount = nodes.filter(n => n.type === 'demand').length * 2.8;
 
@@ -142,6 +144,7 @@ export const generateMD = (
 
       <h1 class="section-title bold uppercase">5 PARÂMETROS BÁSICOS</h1>
       <p>Utilizou-se para os cálculos os seguintes coeficientes globais: K1=1,2 e K2=1,5. O consumo per capita adotado foi de 120 L/hab.dia. A velocidade máxima permitida foi limitada a 2,5 m/s para evitar transientes hidráulicos e desgaste excessivo da tubulação.</p>
+      ${(globalC || globalRoughness) ? `<p>Para o método de <strong>${calcMethod}</strong>, foi aplicado o coeficiente global de <strong>${calcMethod.toLowerCase().includes('darcy') ? globalRoughness : globalC}</strong> para trechos sem especificação individual.</p>` : ''}
 
       <h1 class="section-title bold uppercase">6 RESULTADOS DO DIMENSIONAMENTO</h1>
       <table>
@@ -150,6 +153,7 @@ export const generateMD = (
             <th>Trecho</th>
             <th>Material</th>
             <th>Diâmetro (mm)</th>
+            <th class="text-right">${calcMethod.toLowerCase().includes('darcy') ? 'Rug.' : 'C'}</th>
             <th>Extensão (m)</th>
             <th>Vazão (${flowUnit})</th>
             <th>Veloc. (m/s)</th>
@@ -159,11 +163,17 @@ export const generateMD = (
         <tbody>
           ${results.map(r => {
             const p = pipes.find(pipe => pipe.id === r.segmentId);
+            const isDW = calcMethod.toLowerCase().includes('darcy');
+            const coeff = isDW 
+              ? (p?.customRoughness !== undefined ? p.customRoughness : (globalRoughness || 'Mat.'))
+              : (p?.customC !== undefined ? p.customC : (globalC || 'Mat.'));
+
             return `
               <tr>
                 <td class="bold">T${r.segmentId.replace(/\D/g, '')}</td>
                 <td>${p?.materialId.split('-')[0].toUpperCase()}</td>
                 <td>${p?.nominalDiameter}</td>
+                <td>${coeff}</td>
                 <td>${p?.length.toFixed(1)}</td>
                 <td>${Math.abs(convertFlowFromSI(r.flowRate, flowUnit)).toFixed(3)}</td>
                 <td>${r.velocity.toFixed(2)}</td>
