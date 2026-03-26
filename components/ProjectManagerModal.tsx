@@ -129,7 +129,7 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
                                 <FolderIcon />
                             </div>
                             <div>
-                                <h3 className="text-2xl font-black text-slate-800 tracking-tight">{p.name}</h3>
+                                <h3 className="text-2xl font-black text-slate-800 tracking-tight uppercase">{p.name}</h3>
                                 <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 font-bold">
                                     <span className="uppercase text-blue-600">{data.company || 'Empresa N/A'}</span>
                                     <span className="text-slate-300">•</span>
@@ -321,9 +321,9 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
                                             const isSelected = selectedId === p.id;
                                             return (
                                                 <tr key={p.id} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedId(isSelected ? null : p.id); }} onDoubleClick={() => onOpenProject(JSON.parse(p.data))} className={`group cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
-                                                    <td className={`p-3 border-r border-slate-100 text-sm font-bold ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>{p.name}</td>
-                                                    <td className="p-3 border-r border-slate-100 text-sm text-slate-600">{meta.company || '---'}</td>
-                                                    <td className="p-3 border-r border-slate-100 text-sm text-slate-600">{meta.city || '---'}</td>
+                                                    <td className={`p-3 border-r border-slate-100 text-sm font-bold uppercase ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>{p.name}</td>
+                                                    <td className="p-3 border-r border-slate-100 text-sm text-slate-600 uppercase">{meta.company || '---'}</td>
+                                                    <td className="p-3 border-r border-slate-100 text-sm text-slate-600 uppercase">{meta.city || '---'}</td>
                                                     <td className="p-3 border-r border-slate-100 text-sm text-center font-mono text-slate-500 bg-slate-50/20">{meta.lotsHab || 0}</td>
                                                     <td className="p-3 border-r border-slate-100 text-sm text-center font-mono text-slate-500 bg-slate-50/20">{meta.lotsCom || 0}</td>
                                                     <td className="p-3 border-r border-slate-100 text-sm text-center font-mono text-slate-500 bg-slate-50/20">{meta.lotsInst || 0}</td>

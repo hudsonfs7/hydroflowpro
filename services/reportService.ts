@@ -96,10 +96,27 @@ export const generateReportHtml = (projectData: any) => {
 
   const quantitativoRows = Array.from(quantitativoMap.entries()).map(([key, length]) => {
       const [mat, dn] = key.split('|');
+      
+      const matObj = materials ? materials.find((m: Material) => m.name === mat) : null;
+      let di = '-';
+      if (matObj && matObj.availableDiameters) {
+          const dObj = matObj.availableDiameters.find((d: any) => String(d.dn) === String(dn));
+          if (dObj) di = dObj.di.toFixed(2);
+      }
+      
+      const matLower = mat.toLowerCase();
+      const multiplo = (matLower.includes('pead') || matLower.includes('p.e.a.d')) ? 100 : 6;
+      
+      const numTubos = Math.ceil((length * 1.1) / multiplo);
+      const necM = numTubos * multiplo;
+
       return `<tr>
           <td>${mat}</td>
-          <td class="text-right">${dn}</td>
-          <td class="text-right font-bold">${safeFixed(length, 1)}</td>
+          <td class="text-center font-bold" style="background: #f1f5f9; color: #1e40af;">${dn}</td>
+          <td class="text-center">${di}</td>
+          <td class="text-right">${safeFixed(length, 1)}</td>
+          <td class="text-right font-bold text-blue-700">${necM}</td>
+          <td class="text-center font-bold text-red-600">${numTubos}</td>
       </tr>`;
   }).join('');
 
@@ -428,12 +445,15 @@ export const generateReportHtml = (projectData: any) => {
             </div>
             
             <div class="presentation-box">
+                <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase;">OBJETO</div>
+                <div style="font-size: 18px; font-weight: 800; color: #1e40af; margin-bottom: 12px; text-transform: uppercase;">
+                    ${studyName}
+                </div>
                 <div class="presentation-grid">
-                    <div><strong>Nome do Estudo:</strong> ${studyName}</div>
-                    <div><strong>Localidade:</strong> ${location || '-'}</div>
+                    <div><strong>Localidade:</strong> ${projectMetadata?.city ? projectMetadata.city + (projectMetadata?.state ? ' - ' + projectMetadata.state : '') : (location || '-')}</div>
                     <div><strong>Pessoas Atendidas:</strong> ${peopleServed || '-'}</div>
                     <div><strong>Vazão Total do Sistema:</strong> ${totals?.flowDisplay || '0.00'} ${flowUnit}</div>
-                    <div><strong>Método de Cálculo:</strong> ${calcMethodName}</div>
+                    <div><strong>Método de Cálculo:</strong> ${calcMethodName} (${calcMethod === 'darcy-weisbach' ? 'e' : 'C'})</div>
                     <div><strong>Data de Emissão:</strong> ${date}</div>
                 </div>
             </div>
@@ -442,13 +462,17 @@ export const generateReportHtml = (projectData: any) => {
             <table>
                 <thead>
                     <tr>
-                        <th>Material</th>
-                        <th class="text-right">DN (mm)</th>
-                        <th class="text-right">Extensão Total (m)</th>
+                        <th class="text-left">Material</th>
+                        <th class="text-center">DN (mm)</th>
+                        <th class="text-center">DI (mm)</th>
+                        <th class="text-right">Extensão Efetiva (m)</th>
+                        <th class="text-right">Tub. Necessária (m)*</th>
+                        <th class="text-center">Nº de Tubos/Rolos</th>
                     </tr>
                 </thead>
                 <tbody>${quantitativoRows}</tbody>
             </table>
+            <div style="font-size: 8px; color: #64748b; margin-top: -15px; margin-bottom: 20px; text-align: right;">*Calculada com margem de 10% de perda estrutural. Múltiplos adotados em metros lineares: PEAD (100m) | Demais Variantes (6m).</div>
 
             <h1>2. Detalhamento das Tubulações</h1>
             <table>
