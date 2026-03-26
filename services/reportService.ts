@@ -3,9 +3,10 @@ import { convertFlowFromSI, getPumpOrientations } from './calcService';
 
 const calculatePowerCV = (flow: number, head: number, unit: FlowUnit, efficiency: number) => {
     let flowM3h = flow;
-    if (unit === 'L/s') flowM3h = flow * 3.6;
-    else if (unit === 'm³/day') flowM3h = flow / 24;
-    else if (unit === 'gpm') flowM3h = flow * 0.227124;
+    const u = unit as string;
+    if (u.toLowerCase() === 'l/s') flowM3h = flow * 3.6;
+    else if (u === 'm³/day' || u === 'm3/dia') flowM3h = flow / 24;
+    else if (u === 'gpm') flowM3h = flow * 0.227124;
 
     const powerKW = (flowM3h * head * 9.81) / (3600 * (efficiency / 100));
     return powerKW * 1.35962; // Convert kW to CV
@@ -348,16 +349,16 @@ export const generateReportHtml = (projectData: any) => {
                   <div>
                       <h3 style="font-size: 11px; color: #64748b; margin-bottom: 5px;">DADOS DE PROJETO</h3>
                       <table style="margin-bottom: 0;">
-                          <tr><td>Vazão Requerida</td><td class="text-right font-bold">${fmtQ(config.designFlow)}</td></tr>
-                          <tr><td>AMT Requerida</td><td class="text-right font-bold">${safeFixed(config.designHead)} mca</td></tr>
+                          <tr><td>Vazão Projetada</td><td class="text-right font-bold">${fmtQ(config.designFlow)}</td></tr>
+                          <tr><td>AMT Projetada</td><td class="text-right font-bold">${safeFixed(config.designHead)} mca</td></tr>
                           <tr><td>Rendimento</td><td class="text-right">${safeFixed(config.efficiency)}%</td></tr>
                       </table>
                   </div>
                   <div>
                       <h3 style="font-size: 11px; color: #64748b; margin-bottom: 5px;">DADOS DE OPERAÇÃO</h3>
                       <table style="margin-bottom: 0;">
-                          <tr><td>Vazão Real</td><td class="text-right font-bold text-blue-700">${fmtQ(actualFlow)}</td></tr>
-                          <tr><td>AMT Real</td><td class="text-right font-bold text-blue-700">${safeFixed(actualHead)} mca</td></tr>
+                          <tr><td>Vazão Efetiva</td><td class="text-right font-bold text-blue-700">${fmtQ(actualFlow)}</td></tr>
+                          <tr><td>AMT Efetiva</td><td class="text-right font-bold text-blue-700">${safeFixed(actualHead)} mca</td></tr>
                           <tr><td>Potência Estimada</td><td class="text-right font-bold text-red-600">${safeFixed(powerCV)} cv</td></tr>
                       </table>
                   </div>
@@ -385,7 +386,7 @@ export const generateReportHtml = (projectData: any) => {
                       <text x="32" y="${mapY(0)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">0</text>
                   </svg>
                   <div style="font-size: 11px; margin-top: 8px; color: #475569; background: #f8fafc; padding: 5px; border-radius: 4px; display: inline-block;">
-                      <strong>Ponto de Operação Direto:</strong> ${fmtQ(opFlow)} @ ${safeFixed(opHead)} mca
+                      <strong>Ponto de Referência (Projeto):</strong> ${fmtQ(config.designFlow)} @ ${safeFixed(config.designHead)} mca
                   </div>
               </div>
               <div style="background: #fff8f1; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 15px; font-size: 10px; color: #78350f; text-align: left; border-radius: 4px;">
@@ -395,9 +396,10 @@ export const generateReportHtml = (projectData: any) => {
                   &bull; Líquido a bombear: Água Tratada.<br/>
                   &bull; Favor encaminhar catálogo completo do equipamento junto à proposta preliminar.<br/>
                   <br/>
-                  &bull; <strong>FRETE CIF:</strong> Embasa Rua Buerarema, Parque ETA, S/N - Itamaraju-BA. CEP: 45836-000.<br/>
-                  &bull; <strong>DIFAL</strong> incluso nos impostos.<br/>
-                  &bull; Considerar <strong>Condições de pagamento</strong> padrão.
+                  <div style="background-color: #fee2e2; color: #b91c1c; padding: 4px 6px; border-radius: 4px; margin-bottom: 4px; border-left: 3px solid #ef4444; display: inline-block;">
+                      <strong>⚠️ ATENÇÃO - FRETE CIF:</strong> Embasa Rua Buerarema, Parque ETA, S/N - Itamaraju-BA. CEP: 45836-000.
+                  </div><br/>
+                  &bull; <strong>DIFAL</strong> incluso nos impostos.
               </div>
           </div>`;
       });
