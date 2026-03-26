@@ -37,8 +37,8 @@ export const generateReportHtml = (projectData: any) => {
     @page landscape-page { size: A4 landscape; margin: 10mm; }
     
     body { font-family: 'Inter', -apple-system, sans-serif; color: #1e293b; margin: 0; padding: 0; line-height: 1.5; }
-    .page { width: 100%; box-sizing: border-box; page-break-after: always; position: relative; min-height: 260mm; }
-    .page-landscape { page: landscape-page; width: 100%; min-height: 180mm; position: relative; }
+    .page { width: 100%; box-sizing: border-box; page-break-after: always; }
+    .page-landscape { page: landscape-page; width: 100%; }
     
     .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; margin-bottom: 20px; }
     .header-title { font-size: 20px; font-weight: 800; color: #1e40af; text-transform: uppercase; }
@@ -55,8 +55,10 @@ export const generateReportHtml = (projectData: any) => {
     table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 20px; }
     th { background: #f1f5f9; color: #475569; text-align: left; padding: 8px; font-weight: 700; border-bottom: 1px solid #cbd5e1; }
     td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+    tr { page-break-inside: avoid; }
     tr:nth-child(even) { background-color: #f8fafc; }
     .text-right { text-align: right; }
+    .text-center { text-align: center; }
     .font-bold { font-weight: 700; }
     
     .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
@@ -71,7 +73,7 @@ export const generateReportHtml = (projectData: any) => {
     .croqui-container { width: 100%; height: 140mm; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #f8fafc; position: relative; margin-bottom: 10px; }
     .croqui-img { width: 100%; height: 100%; object-fit: contain; }
     
-    .footer { position: absolute; bottom: 0; width: 100%; text-align: center; font-size: 9px; color: #94a3b8; padding: 10px 0; border-top: 1px solid #f1f5f9; }
+    .footer { width: 100%; text-align: center; font-size: 9px; color: #94a3b8; padding: 10px 0; border-top: 1px solid #f1f5f9; margin-top: 30px; }
     
     @media print {
       .no-print { display: none; }
@@ -152,10 +154,125 @@ export const generateReportHtml = (projectData: any) => {
         <td>${n.type === 'source' ? 'Fonte' : n.type === 'pump' ? 'Bomba' : 'Demanda'}</td>
         <td class="text-right">${safeFixed(n.elevation)}</td>
         <td class="text-right">${n.baseDemand || 0}</td>
-        <td class="text-right font-bold">${safeFixed(cp)}</td>
-        <td class="text-right">${safeFixed(p)}</td>
+        <td class="text-right">${safeFixed(cp)}</td>
+        <td class="text-right font-bold">${safeFixed(p)}</td>
       </tr>`;
   }).join('');
+
+  let maxJ = 0; let maxVel = 0;
+  if (results) {
+      results.forEach((r: any) => {
+          if (r.unitHeadLoss > maxJ) maxJ = r.unitHeadLoss;
+          if (r.velocity > maxVel) maxVel = r.velocity;
+      });
+  }
+  let maxCotaPiez = -Infinity, minElev = Infinity, maxPress = -Infinity, minPress = Infinity;
+  (nodes || []).forEach((n: Node) => {
+      let rawRes = getNodeRes(n.id);
+      let cp = n.elevation, p = n.pressureHead || 0;
+      if (rawRes) {
+          const h = rawRes.head !== undefined ? rawRes.head : rawRes.cp;
+          const pr = rawRes.pressure !== undefined ? rawRes.pressure : rawRes.p;
+          if (unitSystem === UnitSystem.SI) { cp = h; p = pr; } else { cp = h / 0.3048; p = pr / 0.3048; }
+      }
+      if (cp > maxCotaPiez) maxCotaPiez = cp;
+      if (n.elevation < minElev) minElev = n.elevation;
+      if (p > maxPress) maxPress = p;
+      if (p < minPress) minPress = p;
+  });
+  if (minElev === Infinity) minElev = 0; if (maxCotaPiez === -Infinity) maxCotaPiez = 0; if (maxPress === -Infinity) maxPress = 0; if (minPress === Infinity) minPress = 0;
+
+  const verificationsHtml = `
+  <h2>1. Verificações do Dimensionamento</h2>
+  <table>
+      <thead>
+          <tr>
+              <th style="width: 40%;">VERIFICAÇÕES</th>
+              <th class="text-center">Limite</th>
+              <th class="text-center">Máx. Obtido</th>
+              <th class="text-center">-</th>
+          </tr>
+      </thead>
+      <tbody>
+          <tr>
+              <td>Perda de Carga - J (m/km)</td>
+              <td class="text-center font-bold">10.00</td>
+              <td class="text-center font-bold" style="color: ${maxJ > 10 ? '#dc2626' : '#334155'}">${safeFixed(maxJ)}</td>
+              <td class="text-center font-bold" style="color: ${maxJ <= 10 ? '#16a34a' : '#dc2626'}">${maxJ <= 10 ? 'OK' : 'ALTO'}</td>
+          </tr>
+          <tr>
+              <td>Velocidade (m/s)</td>
+              <td class="text-center font-bold">2.00</td>
+              <td class="text-center font-bold" style="color: ${maxVel > 2 ? '#dc2626' : '#334155'}">${safeFixed(maxVel)}</td>
+              <td class="text-center font-bold" style="color: ${maxVel <= 2 ? '#16a34a' : '#dc2626'}">${maxVel <= 2 ? 'OK' : 'ALTO'}</td>
+          </tr>
+          <tr>
+              <td>Cota Piezométrica máxima (m)</td>
+              <td class="text-center font-bold">${safeFixed(maxCotaPiez)}</td>
+              <td>Pressão dinâmica máxima (mca)</td>
+              <td class="text-center font-bold text-blue-800">${safeFixed(maxPress)}</td>
+          </tr>
+          <tr>
+              <td>Cota Terreno mínima (m)</td>
+              <td class="text-center font-bold">${safeFixed(minElev)}</td>
+              <td>Pressão dinâmica mínima (mca)</td>
+              <td class="text-center font-bold text-red-600">${safeFixed(minPress)}</td>
+          </tr>
+      </tbody>
+  </table>`;
+
+  const usedMaterialIds = new Set((pipes || []).map((p: PipeSegment) => p.materialId));
+  const usedMaterials = (materials || []).filter((m: Material) => usedMaterialIds.has(m.id));
+  
+  let diamTableHTML = `<div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">`;
+  usedMaterials.forEach(m => {
+      diamTableHTML += `
+      <table style="flex: 1; min-width: 160px; margin-bottom: 0;">
+          <thead>
+              <tr><th colspan="2" style="background:#1e40af; color:white; text-align:center; font-size:10px;">${m.name}</th></tr>
+              <tr><th class="text-center">DN</th><th class="text-center">DI (mm)</th></tr>
+          </thead>
+          <tbody>
+              ${(m.availableDiameters || []).map(d => `
+              <tr><td class="text-center font-bold">${d.dn}</td><td class="text-center">${d.di.toFixed(2)}</td></tr>
+              `).join('')}
+          </tbody>
+      </table>`;
+  });
+  diamTableHTML += `</div>`;
+
+  const formulaUniversal = calcMethod === 'darcy-weisbach' 
+        ? `<tr>
+              <td style="background:#3b82f6; color:white; font-weight:bold; width: 25%;">Fórmula Universal</td>
+              <td style="background:#eff6ff; color:#1e40af; font-weight:bold; text-align:center; width: 35%;">hf = f . ( L / D ) . ( V² / 2g )</td>
+              <td style="font-size: 9px;">f = Fator de Atrito, L = Extensão (m), D = Diâmetro Interno (m), V = Velocidade (m/s), g = Gravidade</td>
+           </tr>`
+        : `<tr>
+              <td style="background:#3b82f6; color:white; font-weight:bold; width: 25%;">Hazen-Williams</td>
+              <td style="background:#eff6ff; color:#1e40af; font-weight:bold; text-align:center; width: 35%;">hf = 10.67 . L . (Q^1.85) / ( C^1.85 . D^4.87 )</td>
+              <td style="font-size: 9px;">C = Coeficiente, L = Extensão (m), D = Diâm. Interno (m), Q = Vazão (m³/s)</td>
+           </tr>`;
+
+  const formulasHtml = `
+  <h2>3. Fórmulas Aplicadas</h2>
+  <table>
+      <thead>
+          <tr><th colspan="3" style="background:#1e40af; color:white; text-align:center;">MÉTODO DE DIMENSIONAMENTO: ${calcMethodName.toUpperCase()}</th></tr>
+      </thead>
+      <tbody>
+          ${formulaUniversal}
+          <tr>
+              <td style="background:#60a5fa; color:white; font-weight:bold;">Número de Reynolds</td>
+              <td style="background:#eff6ff; color:#1e40af; font-weight:bold; text-align:center;">Re = V . D / &nu;</td>
+              <td style="font-size: 9px;">V = Velocidade (m/s), D = Diâmetro Interno (m), &nu; = Viscosidade Cinemática (m²/s)</td>
+          </tr>
+          <tr>
+              <td style="background:#3b82f6; color:white; font-weight:bold;">Equação da Continuidade</td>
+              <td style="background:#eff6ff; color:#1e40af; font-weight:bold; text-align:center;">Q = ( &pi; D² / 4 ) . V</td>
+              <td style="font-size: 9px;">Q = Vazão (m³/s), D = Diâmetro Interno (m), V = Velocidade (m/s)</td>
+          </tr>
+      </tbody>
+  </table>`;
 
   const pumps = (nodes || []).filter((n: Node) => n.type === 'pump');
   let cmbContent = '';
@@ -237,6 +354,11 @@ export const generateReportHtml = (projectData: any) => {
           const opX = mapX(opFlow);
           const opY = mapY(opHead);
 
+          const fmtQ = (qNum: number) => { 
+                const qM3 = flowUnit === 'L/s' ? qNum * 3.6 : (flowUnit === 'm³/day' ? qNum / 24 : qNum); 
+                return `${safeFixed(qNum)} ${flowUnit} (${safeFixed(qM3)} m³/h)`; 
+          };
+
           cmbContent += `
           <div class="pump-container">
               <h2 style="color: #1e40af; margin-top: 0;">${p.name || 'Bomba ' + p.id}</h2>
@@ -244,7 +366,7 @@ export const generateReportHtml = (projectData: any) => {
                   <div>
                       <h3 style="font-size: 11px; color: #64748b; margin-bottom: 5px;">DADOS DE PROJETO</h3>
                       <table style="margin-bottom: 0;">
-                          <tr><td>Vazão Requerida</td><td class="text-right font-bold">${safeFixed(config.designFlow)} ${flowUnit}</td></tr>
+                          <tr><td>Vazão Requerida</td><td class="text-right font-bold">${fmtQ(config.designFlow)}</td></tr>
                           <tr><td>AMT Requerida</td><td class="text-right font-bold">${safeFixed(config.designHead)} mca</td></tr>
                           <tr><td>Rendimento</td><td class="text-right">${safeFixed(config.efficiency)}%</td></tr>
                       </table>
@@ -252,35 +374,47 @@ export const generateReportHtml = (projectData: any) => {
                   <div>
                       <h3 style="font-size: 11px; color: #64748b; margin-bottom: 5px;">DADOS DE OPERAÇÃO</h3>
                       <table style="margin-bottom: 0;">
-                          <tr><td>Vazão Real</td><td class="text-right font-bold">${safeFixed(actualFlow)} ${flowUnit}</td></tr>
-                          <tr><td>AMT Real</td><td class="text-right font-bold">${safeFixed(actualHead)} mca</td></tr>
-                          <tr><td>Potência Estimada</td><td class="text-right font-bold">${safeFixed(powerCV)} cv</td></tr>
+                          <tr><td>Vazão Real</td><td class="text-right font-bold text-blue-700">${fmtQ(actualFlow)}</td></tr>
+                          <tr><td>AMT Real</td><td class="text-right font-bold text-blue-700">${safeFixed(actualHead)} mca</td></tr>
+                          <tr><td>Potência Estimada</td><td class="text-right font-bold text-red-600">${safeFixed(powerCV)} cv</td></tr>
                       </table>
                   </div>
               </div>
               <div class="chart-container" style="margin-top: 15px; text-align: center;">
-                  <svg width="400" height="250" viewBox="0 0 400 250" style="border: 1px solid #e2e8f0; border-radius: 4px; display: inline-block; max-width: 100%;">
-                      <!-- Grid -->
+                  <svg width="400" height="250" viewBox="0 0 400 250" style="border: 1px solid #e2e8f0; border-radius: 4px; display: inline-block; max-width: 100%; font-family: sans-serif;">
                       <line x1="40" y1="20" x2="40" y2="210" stroke="#e2e8f0" stroke-width="1" />
                       <line x1="40" y1="210" x2="380" y2="210" stroke="#e2e8f0" stroke-width="1" />
                       
-                      <!-- Pump Curve (Blue) -->
                       <path d="${pumpPath}" fill="none" stroke="#2563eb" stroke-width="3" />
-                      
-                      <!-- System Curve (Gray Dashed) -->
                       <path d="${sysPath}" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6,4" />
                       
-                      <!-- Operating Point -->
                       <circle cx="${opX}" cy="${opY}" r="6" fill="#dc2626" />
                       <text x="${opX + 10}" y="${opY - 5}" font-size="12" fill="#dc2626" font-weight="bold">Ponto de Operação</text>
                       
-                      <!-- Labels -->
-                      <text x="200" y="240" text-anchor="middle" font-size="12" fill="#475569">Vazão (${flowUnit})</text>
-                      <text x="20" y="125" text-anchor="middle" font-size="12" fill="#475569" transform="rotate(-90 20 125)">AMT (mca)</text>
+                      <text x="210" y="245" text-anchor="middle" font-size="12" fill="#475569" font-weight="bold">Vazão</text>
+                      <text x="12" y="115" text-anchor="middle" font-size="12" fill="#475569" font-weight="bold" transform="rotate(-90 12 115)">AMT (mca)</text>
+                      
+                      <text x="${mapX(0)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">0</text>
+                      <text x="${mapX(plotMax/2)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">${safeFixed(plotMax/2, 1)}</text>
+                      <text x="${mapX(plotMax)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">${safeFixed(plotMax, 1)}</text>
+                      
+                      <text x="32" y="${mapY(maxHeadPlot)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">${safeFixed(maxHeadPlot, 0)}</text>
+                      <text x="32" y="${mapY(maxHeadPlot/2)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">${safeFixed(maxHeadPlot/2, 0)}</text>
+                      <text x="32" y="${mapY(0)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">0</text>
                   </svg>
-                  <div style="font-size: 11px; margin-top: 8px; color: #475569;">
-                      <strong>Ponto de Operação:</strong> ${safeFixed(opFlow)} ${flowUnit} @ ${safeFixed(opHead)} mca
+                  <div style="font-size: 11px; margin-top: 8px; color: #475569; background: #f8fafc; padding: 5px; border-radius: 4px; display: inline-block;">
+                      <strong>Ponto de Operação Direto:</strong> ${fmtQ(opFlow)} @ ${safeFixed(opHead)} mca
                   </div>
+              </div>
+              <div style="background: #fff8f1; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 15px; font-size: 10px; color: #78350f; text-align: left; border-radius: 4px;">
+                  <strong style="font-size: 11px; display:block; margin-bottom: 4px;">OBSERVAÇÕES PARA COTAÇÃO DO CONJUNTO MOTOBOMBA:</strong>
+                  &bull; O motor, se da marca WEG, deve ser da linha IR03 (04 POLOS).<br/>
+                  &bull; Favor encaminhar catálogo completo do equipamento junto à proposta preliminar.<br/>
+                  <br/>
+                  <strong style="font-size: 11px; display:block; margin-bottom: 4px;">AO CADASTRAR COTAÇÃO, CONSIDERAR:</strong>
+                  &bull; <strong>FRETE CIF:</strong> Embasa Rua Buerarema, Parque ETA, S/N - Itamaraju-BA. CEP: 45836-000.<br/>
+                  &bull; <strong>DIFAL</strong> incluso nos impostos.<br/>
+                  &bull; Considerar <strong>Condições de pagamento</strong> padrão.
               </div>
           </div>`;
       });
@@ -304,12 +438,11 @@ export const generateReportHtml = (projectData: any) => {
                 <div class="header-title">HydroFlow Pro</div>
                 <div class="header-meta">
                     <strong>PROJETO:</strong> ${studyName}<br/>
-                    <strong>DATA:</strong> ${date} | <strong>PÁGINA:</strong> 1/3
+                    <strong>DATA:</strong> ${date}
                 </div>
             </div>
             
             <div class="presentation-box">
-                <h2>Apresentação do Projeto</h2>
                 <div class="presentation-grid">
                     <div><strong>Nome do Estudo:</strong> ${studyName}</div>
                     <div><strong>Localidade:</strong> ${location || '-'}</div>
@@ -320,7 +453,15 @@ export const generateReportHtml = (projectData: any) => {
                 </div>
             </div>
             
-            <h1>1. Quantitativo de Materiais</h1>
+            ${verificationsHtml}
+            ${formulasHtml}
+            
+            <h2>2. Diâmetros Internos Utilizados</h2>
+            ${diamTableHTML}
+
+            <div style="page-break-after: always; padding-top: 10px;"></div>
+
+            <h1>4. Quantitativo de Materiais</h1>
             <table>
                 <thead>
                     <tr>
@@ -332,13 +473,13 @@ export const generateReportHtml = (projectData: any) => {
                 <tbody>${quantitativoRows}</tbody>
             </table>
 
-            <h1>2. Detalhamento das Tubulações</h1>
+            <h1>5. Detalhamento das Tubulações</h1>
             <table>
                 <thead>
                     <tr>
                         <th>ID</th>
                         <th>Trecho</th>
-                        <th class="text-right">Comp. (m)</th>
+                        <th class="text-right">Extensão (m)</th>
                         <th class="text-right">DN (mm)</th>
                         <th>Material</th>
                         <th class="text-right">${calcMethod === 'darcy-weisbach' ? 'Rug.' : 'C'}</th>
@@ -351,7 +492,7 @@ export const generateReportHtml = (projectData: any) => {
                 <tbody>${pipeRows}</tbody>
             </table>
 
-            <h2>2.1. Dados dos Nós</h2>
+            <h2>5.1. Dados dos Nós</h2>
             <table>
                 <thead>
                     <tr>
@@ -367,7 +508,7 @@ export const generateReportHtml = (projectData: any) => {
                 <tbody>${nodeRows}</tbody>
             </table>
             
-            <div class="footer">Relatório Gerado por HydroFlow Pro - Página 1 de 3</div>
+            <div class="footer">Relatório Gerado por HydroFlow Pro</div>
         </div>
 
         <!-- PÁGINA 2: CMB E CURVAS -->
@@ -376,14 +517,14 @@ export const generateReportHtml = (projectData: any) => {
                 <div class="header-title">HydroFlow Pro</div>
                 <div class="header-meta">
                     <strong>PROJETO:</strong> ${studyName}<br/>
-                    <strong>DATA:</strong> ${date} | <strong>PÁGINA:</strong> 2/3
+                    <strong>DATA:</strong> ${date}
                 </div>
             </div>
             
-            <h1>3. Conjunto Motobomba e Curvas de Performance</h1>
+            <h1>6. Conjunto Motobomba e Curvas de Performance</h1>
             ${cmbContent}
             
-            <div class="footer">Relatório Gerado por HydroFlow Pro - Página 2 de 3</div>
+            <div class="footer">Relatório Gerado por HydroFlow Pro</div>
         </div>
 
         <!-- PÁGINA 3: CROQUI (PAISAGEM) -->
@@ -392,11 +533,11 @@ export const generateReportHtml = (projectData: any) => {
                 <div class="header-title">HydroFlow Pro</div>
                 <div class="header-meta">
                     <strong>PROJETO:</strong> ${studyName}<br/>
-                    <strong>DATA:</strong> ${date} | <strong>PÁGINA:</strong> 3/3
+                    <strong>DATA:</strong> ${date}
                 </div>
             </div>
             
-            <h1>4. Croqui da Rede Hidráulica</h1>
+            <h1>7. Croqui da Rede Hidráulica</h1>
             <div class="croqui-container">
                 ${mapImage ? `<img src="${mapImage}" class="croqui-img" alt="Croqui da rede" />` : '<div class="chart-placeholder">Mapa não disponível</div>'}
             </div>
@@ -409,7 +550,7 @@ export const generateReportHtml = (projectData: any) => {
                 <div>Vazão: L/s e m³/h</div>
             </div>
             
-            <div class="footer">Relatório Gerado por HydroFlow Pro - Página 3 de 3</div>
+            <div class="footer">Relatório Gerado por HydroFlow Pro</div>
         </div>
 
         <script>
