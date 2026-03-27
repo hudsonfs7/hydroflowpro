@@ -160,7 +160,6 @@ export const solveNetwork = (
     const nodeHeads = new Map<string, number>();
     const pipeFlows = new Map<string, number>();
     const levels = getTopologyLevels(nodes, pipes);
-    const pumpSuctionMap = getPumpOrientations(nodes, pipes);
 
     // 2. Cálculo de Vazões (Mass Balance Propagation)
     const sortedNodeIds = nodes
@@ -178,6 +177,7 @@ export const solveNetwork = (
         if (node.type === 'source' || node.type === 'well') return;
 
         let totalFlowAtNode = nodeDemandsSI.get(nodeId) || 0;
+        const nodeLevel = levels.get(nodeId) ?? Number.POSITIVE_INFINITY;
         
         const adjPipes = pipes.filter(p => p.startNodeId === nodeId || p.endNodeId === nodeId);
         adjPipes.forEach(p => {
@@ -186,11 +186,26 @@ export const solveNetwork = (
             }
         });
 
-        const parentPipe = adjPipes.find(p => !processedPipes.has(p.id));
-        if (parentPipe) {
+        const candidates = adjPipes
+            .filter(p => !processedPipes.has(p.id))
+            .map(p => {
+                const otherId = p.startNodeId === nodeId ? p.endNodeId : p.startNodeId;
+                const otherLevel = levels.get(otherId) ?? Number.POSITIVE_INFINITY;
+                return { pipe: p, otherId, otherLevel };
+            });
+
+        // Prefer parent upstream (smaller topology level). Fallback keeps deterministic behavior in malformed networks.
+        const parentCandidate = candidates
+            .filter(c => c.otherLevel < nodeLevel)
+            .sort((a, b) => a.otherLevel - b.otherLevel)[0]
+            || candidates.sort((a, b) => a.otherLevel - b.otherLevel)[0];
+
+        if (parentCandidate) {
+            const { pipe: parentPipe, otherId: parentNodeId } = parentCandidate;
             const qMarcha = convertFlowToSI(parentPipe.distributedDemand || 0, flowUnit);
             const flowInParent = totalFlowAtNode + qMarcha;
-            pipeFlows.set(parentPipe.id, flowInParent);
+            const signedFlow = parentPipe.startNodeId === parentNodeId ? flowInParent : -flowInParent;
+            pipeFlows.set(parentPipe.id, signedFlow);
             processedPipes.add(parentPipe.id);
         }
     });
@@ -233,7 +248,7 @@ export const solveNetwork = (
             if (node.type === 'pump') {
                 let qRecalque = 0;
                 pipes.filter(p => (p.startNodeId === node.id || p.endNodeId === node.id) && p.id !== connectingPipe!.id)
-                     .forEach(p => qRecalque += (pipeFlows.get(p.id) || 0));
+                     .forEach(p => qRecalque += Math.abs(pipeFlows.get(p.id) || 0));
                 
                 const boost = getHeadFromCurve(qRecalque, node.pumpCurve || [], flowUnit);
                 hNode += boost;
