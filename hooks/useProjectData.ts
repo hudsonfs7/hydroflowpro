@@ -1,6 +1,6 @@
 
 import { useState, useCallback } from 'react';
-import { Node, PipeSegment, Material, Vertex, DemandGroup, MapAnnotation, AnnotationGroup, MDConfig, ProjectMetadata } from '../types';
+import { Node, PipeSegment, Material, Vertex, DemandGroup, MapAnnotation, AnnotationGroup, MDConfig, ProjectMetadata, EVTEConfig } from '../types';
 import { DEFAULT_MATERIALS, COMMON_FITTINGS } from '../constants';
 import { calculateGeoDistance } from '../services/calcService';
 
@@ -20,6 +20,19 @@ export const useProjectData = () => {
     location: 'CIDADE - UF',
     year: new Date().getFullYear().toString(),
     company: 'NOME DA EMPRESA'
+  });
+
+  const [evteConfig, setEvteConfig] = useState<EVTEConfig>({
+    saa: 'SAA: ',
+    local: 'PRÓXIMO A: ',
+    setor: 'USU - ',
+    folha: '01/01',
+    escala: 'SEM ESCALA',
+    data: new Date().toLocaleDateString('pt-BR'),
+    obs: 'O abastecimento do empreendimento é viável a partir da implantação...',
+    tecnico: 'Responsável Técnico',
+    matricula: '000000',
+    titulo: 'VIABILIDADE TÉCNICA'
   });
   
   const [annotationGroups, setAnnotationGroups] = useState<AnnotationGroup[]>([
@@ -168,8 +181,8 @@ export const useProjectData = () => {
   }, [nodes, demandGroups, recalculatePipeLengths]);
 
   return {
-      nodes, pipes, materials, demandGroups, annotations, annotationGroups, mdConfig, projectMetadata,
-      setMaterials, setNodes, setPipes, setDemandGroups, setAnnotations, setAnnotationGroups, setMdConfig, setProjectMetadata,
+      nodes, pipes, materials, demandGroups, annotations, annotationGroups, mdConfig, evteConfig, projectMetadata,
+      setMaterials, setNodes, setPipes, setDemandGroups, setAnnotations, setAnnotationGroups, setMdConfig, setEvteConfig, setProjectMetadata,
       addNode, updateNode, removeNode,
       addPipe, updatePipe, removePipe,
       addDemandGroup, updateDemandGroup, removeDemandGroup,

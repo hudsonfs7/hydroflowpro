@@ -6,7 +6,7 @@ import { FolderIcon, PlusIcon, CloseIcon } from './Icons';
 
 interface ProjectSelectorModalProps {
     currentUser: User | null;
-    onSelect: (p: any) => void;
+    onSelect: (p: any) => void | Promise<void>;
     onCreateNew: () => void;
     onLogout: () => void;
 }
@@ -71,7 +71,7 @@ export const ProjectSelectorModal: React.FC<ProjectSelectorModalProps> = ({
                                 return (
                                     <button 
                                         key={p.id} 
-                                        onClick={() => onSelect(p)}
+                                        onClick={() => void onSelect(p)}
                                         className="bg-white border border-slate-200 hover:border-blue-400 p-4 rounded-xl flex items-center justify-between text-left transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 group"
                                     >
                                         <div>

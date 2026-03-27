@@ -12,8 +12,194 @@ const calculatePowerCV = (flow: number, head: number, unit: FlowUnit, efficiency
     return powerKW * 1.35962; // Convert kW to CV
 };
 
-export const generateReportHtml = (projectData: any) => {
+const escapeHtml = (value: any) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const safeFixedValue = (val: any, digits: number = 2) => {
+    if (typeof val === 'number' && !isNaN(val)) return val.toFixed(digits);
+    return "0.00";
+};
+
+const getNodePressure = (nodeResults: NodeResult[] | Map<string, NodeResult> | any, nodeId: string) => {
+    if (!nodeResults) return null;
+    if (nodeResults instanceof Map) return nodeResults.get(nodeId)?.pressure ?? null;
+    if (Array.isArray(nodeResults)) return nodeResults.find((n: any) => n.nodeId === nodeId)?.pressure ?? null;
+    return null;
+};
+
+const getPipeColorForReport = (dn: number): string => {
+    switch (dn) {
+        case 32: return '#cd853f';
+        case 50:
+        case 63: return '#32cd32';
+        case 75:
+        case 90: return '#f97316';
+        case 100:
+        case 110: return '#0ea5e9';
+        case 150: return '#dc2626';
+        case 200: return '#9333ea';
+        case 250: return '#eab308';
+        case 300: return '#db2777';
+        default: return '#64748b';
+    }
+};
+
+const buildSchematicCroquiSvg = (
+    nodes: Node[] = [],
+    pipes: PipeSegment[] = [],
+    _results: CalculationResult[] = [],
+    nodeResults: NodeResult[] | Map<string, NodeResult> | any,
+    _flowUnit: FlowUnit
+) => {
+    if (nodes.length === 0) {
+        return '<div class="chart-placeholder">Rede não disponível</div>';
+    }
+
+    const width = 1200;
+    const height = 680;
+    const padding = 55;
+    const nodeMap = new Map(nodes.map(node => [node.id, node]));
+
+    const rawPoints = nodes.map((node, index) => ({
+        id: node.id,
+        x: Number.isFinite(node.x) ? node.x : (Number.isFinite(node.geoPosition?.lng) ? node.geoPosition.lng : index * 120),
+        y: Number.isFinite(node.y) ? node.y : (Number.isFinite(node.geoPosition?.lat) ? -node.geoPosition.lat : index * 80)
+    }));
+
+    const minX = Math.min(...rawPoints.map(point => point.x));
+    const maxX = Math.max(...rawPoints.map(point => point.x));
+    const minY = Math.min(...rawPoints.map(point => point.y));
+    const maxY = Math.max(...rawPoints.map(point => point.y));
+    const spanX = Math.max(maxX - minX, 1);
+    const spanY = Math.max(maxY - minY, 1);
+    const scale = Math.min((width - padding * 2) / spanX, (height - padding * 2) / spanY);
+    const offsetX = (width - spanX * scale) / 2;
+    const offsetY = (height - spanY * scale) / 2;
+
+    const projectPoint = (x: number, y: number) => ({
+        x: offsetX + (x - minX) * scale,
+        y: offsetY + (y - minY) * scale
+    });
+
+    const resolveVertexPoint = (vertex: any, fallbackIndex: number) => {
+        const baseX = Number.isFinite(vertex?.x) ? vertex.x : (Number.isFinite(vertex?.geoPosition?.lng) ? vertex.geoPosition.lng : minX + fallbackIndex * 10);
+        const baseY = Number.isFinite(vertex?.y) ? vertex.y : (Number.isFinite(vertex?.geoPosition?.lat) ? -vertex.geoPosition.lat : minY + fallbackIndex * 10);
+        return projectPoint(baseX, baseY);
+    };
+
+    const positionedNodes = new Map(rawPoints.map(point => [point.id, projectPoint(point.x, point.y)]));
+
+    const pipeMarkup = pipes.map((pipe, pipeIndex) => {
+        const start = nodeMap.get(pipe.startNodeId);
+        const end = nodeMap.get(pipe.endNodeId);
+        if (!start || !end) return '';
+
+        const points = [
+            positionedNodes.get(start.id)!,
+            ...(pipe.vertices || []).map((vertex, vertexIndex) => resolveVertexPoint(vertex, pipeIndex + vertexIndex + 1)),
+            positionedNodes.get(end.id)!
+        ];
+
+        let totalDist = 0;
+        const segDists: number[] = [];
+        for (let i = 0; i < points.length - 1; i++) {
+            const dx = points[i + 1].x - points[i].x;
+            const dy = points[i + 1].y - points[i].y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            segDists.push(dist);
+            totalDist += dist;
+        }
+
+        let labelX = (points[0].x + points[points.length - 1].x) / 2;
+        let labelY = (points[0].y + points[points.length - 1].y) / 2;
+        let baseAngle = 0;
+
+        let accumulated = 0;
+        const midDist = totalDist / 2;
+        for (let i = 0; i < segDists.length; i++) {
+            if (accumulated + segDists[i] >= midDist) {
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                const ratio = segDists[i] > 0 ? (midDist - accumulated) / segDists[i] : 0.5;
+                labelX = p1.x + (p2.x - p1.x) * ratio;
+                labelY = p1.y + (p2.y - p1.y) * ratio;
+                baseAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
+                break;
+            }
+            accumulated += segDists[i];
+        }
+
+        let textAngle = baseAngle;
+        if (textAngle > 90 || textAngle < -90) textAngle += 180;
+
+        const polylinePoints = points.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ');
+        const pipeColor = getPipeColorForReport(pipe.nominalDiameter);
+
+        return `
+        <g>
+            <polyline points="${polylinePoints}" fill="none" stroke="${pipeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+            <g transform="translate(${labelX.toFixed(1)}, ${labelY.toFixed(1)}) rotate(${textAngle.toFixed(2)})">
+                <text y="-11" text-anchor="middle" font-size="16" font-family="monospace" font-weight="700" fill="#1e293b" style="paint-order: stroke; stroke: rgba(255,255,255,0.92); stroke-width: 4px;">DN${escapeHtml(pipe.nominalDiameter)}</text>
+                <text y="14" text-anchor="middle" font-size="15" font-family="monospace" fill="#475569" style="paint-order: stroke; stroke: rgba(255,255,255,0.92); stroke-width: 4px;">${escapeHtml(safeFixedValue(pipe.length, 1))} m</text>
+            </g>
+        </g>`;
+    }).join('');
+
+    const nodeMarkup = nodes.map((node, index) => {
+        const point = positionedNodes.get(node.id);
+        if (!point) return '';
+
+        const pressure = getNodePressure(nodeResults, node.id);
+        const radius = node.type === 'pump' ? 13 : 11;
+        const strokeColor = node.type === 'source'
+            ? '#0ea5e9'
+            : node.type === 'well'
+                ? '#6366f1'
+                : node.type === 'pump'
+                    ? '#7c3aed'
+                    : '#dc2626';
+
+        const sideRight = (index % 2 === 0);
+        const x1 = sideRight ? radius : -radius;
+        const y1 = -radius * 0.3;
+        const x2 = sideRight ? radius + 20 : -(radius + 20);
+        const y2 = -radius - 20;
+        const x3 = sideRight ? x2 + 68 : x2 - 68;
+        const pX = sideRight ? x3 + 4 : x3 - 4;
+        const pAnchor = sideRight ? 'start' : 'end';
+
+        const shape = node.type === 'source'
+            ? `<rect x="${-radius}" y="${-radius}" width="${radius * 2}" height="${radius * 2}" rx="2" fill="white" stroke="${strokeColor}" stroke-width="2" />`
+            : node.type === 'pump'
+                ? `<g><circle r="${radius}" fill="white" stroke="${strokeColor}" stroke-width="2" /><line x1="${-radius * 0.4}" y1="0" x2="${radius * 0.55}" y2="0" stroke="${strokeColor}" stroke-width="1.4" /><polyline points="${radius * 0.25},${-radius * 0.25} ${radius * 0.55},0 ${radius * 0.25},${radius * 0.25}" fill="none" stroke="${strokeColor}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></g>`
+                : node.type === 'well'
+                    ? `<g><rect x="${-radius}" y="${-radius}" width="${radius * 2}" height="${radius * 2}" fill="white" stroke="${strokeColor}" stroke-width="2" /><circle r="3.5" fill="${strokeColor}" /></g>`
+                    : `<circle r="${radius}" fill="white" stroke="${strokeColor}" stroke-width="2" />`;
+
+        return `
+        <g transform="translate(${point.x.toFixed(1)}, ${point.y.toFixed(1)})">
+            <polyline points="${x1},${y1} ${x2},${y2} ${x3},${y2}" fill="none" stroke="#dc2626" stroke-width="1.2" />
+            <text x="${pX}" y="${(y2 + 1).toFixed(1)}" text-anchor="${pAnchor}" font-size="18" font-family="monospace" font-weight="700" fill="#dc2626" dominant-baseline="middle" style="paint-order: stroke; stroke: rgba(255,255,255,0.92); stroke-width: 4px;">P=${escapeHtml(safeFixedValue(pressure ?? 0, 2))}</text>
+            ${shape}
+            <text x="0" y="4" text-anchor="middle" font-size="13" font-weight="700" fill="${strokeColor}">${escapeHtml(node.id.replace(/\D/g, '') || node.id)}</text>
+        </g>`;
+    }).join('');
+
+    return `
+    <svg viewBox="0 0 ${width} ${height}" class="croqui-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Croqui técnico da rede">
+        <rect width="${width}" height="${height}" fill="#ffffff" />
+        ${pipeMarkup}
+        ${nodeMarkup}
+    </svg>`;
+};
+
+export const generateReportHtml = (projectData: any, options: { autoPrint?: boolean } = {}) => {
     const { nodes, pipes, results, nodeResults, totals, flowUnit, unitSystem, materials, projectMetadata, calcMethod, mapImage, globalC, globalRoughness } = projectData;
+    const { autoPrint = true } = options;
     const date = new Date().toLocaleDateString('pt-BR');
 
     const studyName = projectMetadata?.studyName || projectMetadata?.name || 'Projeto Sem Nome';
@@ -80,6 +266,7 @@ export const generateReportHtml = (projectData: any) => {
     
     .croqui-container { width: 100%; height: 140mm; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #f8fafc; position: relative; margin-bottom: 10px; }
     .croqui-img { width: 100%; height: 100%; object-fit: contain; }
+    .croqui-svg { width: 100%; height: 100%; display: block; }
     
     .footer { width: 100%; text-align: center; font-size: 9px; color: #94a3b8; padding: 10px 0; border-top: 1px solid #f1f5f9; margin-top: 30px; }
     
@@ -145,7 +332,7 @@ export const generateReportHtml = (projectData: any) => {
         }
 
         return `<tr>
-        <td>${p.id.replace('p', 'T')}</td>
+        <td>${p.name || p.id.replace('p', 'T')}</td>
         <td>${p.startNodeId} → ${p.endNodeId}</td>
         <td class="text-right">${safeFixed(p.length, 1)}</td>
         <td class="text-right">${p.nominalDiameter}</td>
@@ -432,6 +619,11 @@ export const generateReportHtml = (projectData: any) => {
         cmbContent = '<p style="color: #94a3b8; text-align: center; padding: 40px;">Nenhum Conjunto Motobomba configurado neste projeto.</p>';
     }
 
+    const schematicCroqui = buildSchematicCroquiSvg(nodes, pipes, results, nodeResults, flowUnit);
+    const croquiMarkup = mapImage
+        ? `<img src="${mapImage}" class="croqui-img" alt="Croqui da rede" />`
+        : schematicCroqui;
+
     return `
     <!DOCTYPE html>
     <html>
@@ -553,26 +745,35 @@ export const generateReportHtml = (projectData: any) => {
             
             <h1>4. Croqui da Rede Hidráulica</h1>
             <div class="croqui-container">
-                ${mapImage ? `<img src="${mapImage}" class="croqui-img" alt="Croqui da rede" />` : '<div class="chart-placeholder">Mapa não disponível</div>'}
+                ${croquiMarkup}
             </div>
             
             <div style="margin-top: 10px; display: flex; gap: 20px; font-size: 10px; color: #64748b; font-weight: 600;">
                 <div><strong>LEGENDA:</strong></div>
                 <div>P: Pressão (mca)</div>
-                <div>M: Material</div>
+                <div>DN: Diâmetro nominal</div>
                 <div>E: Extensão (m)</div>
-                <div>Vazão: L/s e m³/h</div>
+                <div>Cor: Faixa por DN</div>
             </div>
             
             <div class="footer">Relatório Gerado por HydroFlow Pro</div>
         </div>
 
-        <script>
+        ${autoPrint ? `<script>
             window.onload = () => {
                 setTimeout(() => { window.print(); }, 1000);
             };
-        </script>
+        </script>` : ''}
       </body>
     </html>
   `;
+};
+
+export const generateReport = (projectData: any) => {
+    const html = generateReportHtml(projectData, { autoPrint: true });
+    const win = window.open('', '_blank');
+    if (win) {
+        win.document.write(html);
+        win.document.close();
+    }
 };

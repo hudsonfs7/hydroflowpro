@@ -9,18 +9,18 @@ let mainWindow;
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  
+
   // Tenta resolver o ícone de forma segura
   let iconPath = path.join(__dirname, '../public/favicon.ico');
   if (!fs.existsSync(iconPath)) {
-      // Fallback se estiver rodando dentro do asar ou caminho dist diferente
-      iconPath = path.join(__dirname, '../dist/favicon.ico');
+    // Fallback se estiver rodando dentro do asar ou caminho dist diferente
+    iconPath = path.join(__dirname, '../dist/favicon.ico');
   }
 
   mainWindow = new BrowserWindow({
     width: Math.min(1280, width),
     height: Math.min(800, height),
-    title: "HydroFlow Pro",
+    title: 'HydroFlow Pro',
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       nodeIntegration: true,
@@ -35,11 +35,11 @@ function createWindow() {
   if (!app.isPackaged) {
     // Modo Desenvolvimento
     mainWindow.loadURL('http://localhost:5173').catch(e => console.error(e));
-    console.log("Running in Development Mode");
+    console.log('Running in Development Mode');
   } else {
     // Modo Produção (Electron Packaged)
     const indexPath = path.join(__dirname, '../dist/index.html');
-    mainWindow.loadFile(indexPath).catch(e => console.error("Failed to load app:", e));
+    mainWindow.loadFile(indexPath).catch(e => console.error('Failed to load app:', e));
   }
 }
 

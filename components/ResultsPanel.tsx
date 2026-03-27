@@ -293,7 +293,7 @@ export const ResultsContent = (props: any) => {
                                  <div className="flex justify-between items-center mb-2">
                                      <div className="flex items-center gap-2">
                                          <div className={`w-1.5 h-1.5 rounded-full ${res.regime === 'Turbulent' ? 'bg-amber-400' : 'bg-emerald-400'}`}></div>
-                                         <span className="text-[12px] font-semibold text-slate-700">T{res.segmentId.replace(/\D/g, '')}</span>
+                                         <span className="text-[12px] font-semibold text-slate-700">{pipe?.name || `T${res.segmentId.replace(/^p/i, '')}`}</span>
                                      </div>
                                      <span className="text-[12px] font-bold text-slate-800">{res.totalHeadLoss?.toFixed(2)} m</span>
                                  </div>

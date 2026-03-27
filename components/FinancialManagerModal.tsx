@@ -14,10 +14,11 @@ interface FinancialManagerModalProps {
     userOrgName?: string;
     onBackToProjects: () => void;
     onOpenBudget: (metadata: ProjectMetadata, proposalId?: string) => void;
+    lockedProjectId?: string | null;
 }
 
 export const FinancialManagerModal: React.FC<FinancialManagerModalProps> = ({ 
-    onClose, currentUser, userOrgName, onBackToProjects, onOpenBudget 
+    onClose, currentUser, userOrgName, onBackToProjects, onOpenBudget, lockedProjectId = null
 }) => {
     const [projects, setProjects] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -52,8 +53,13 @@ export const FinancialManagerModal: React.FC<FinancialManagerModalProps> = ({
 
     useEffect(() => { load(); }, [currentUser]);
 
+    const scopedProjects = useMemo(() => {
+        if (!lockedProjectId) return projects;
+        return projects.filter(p => p.id === lockedProjectId);
+    }, [projects, lockedProjectId]);
+
     // Enhanced Search: Filter by Project Name OR Proposal Number within the project
-    const filteredProjects = projects.filter(p => {
+    const filteredProjects = scopedProjects.filter(p => {
         const searchText = search.toLowerCase();
         const name = (p.name || "").toLowerCase();
         
@@ -73,8 +79,8 @@ export const FinancialManagerModal: React.FC<FinancialManagerModalProps> = ({
 
     const selectedProject = useMemo(() => {
         if (!selectedId) return null;
-        return projects.find(proj => proj.id === selectedId);
-    }, [selectedId, projects]);
+        return scopedProjects.find(proj => proj.id === selectedId) || null;
+    }, [selectedId, scopedProjects]);
 
     const selectedMetadata = useMemo(() => {
         if (!selectedProject) return null;
@@ -103,6 +109,13 @@ export const FinancialManagerModal: React.FC<FinancialManagerModalProps> = ({
         setIsProposalIdValid(false);
         setShowDeleteConfirm(false);
     }, [selectedId]);
+
+    useEffect(() => {
+        if (!lockedProjectId) return;
+        if (scopedProjects.some(p => p.id === lockedProjectId)) {
+            setSelectedId(lockedProjectId);
+        }
+    }, [lockedProjectId, scopedProjects]);
 
     // Validate if the selected proposal ID actually exists in the current metadata
     useEffect(() => {
@@ -229,8 +242,12 @@ export const FinancialManagerModal: React.FC<FinancialManagerModalProps> = ({
                 {/* Ribbon Financeira */}
                 <div className="h-16 bg-slate-800 flex items-center justify-between px-6 shrink-0 shadow-lg z-10">
                     <div className="flex items-center gap-1">
-                        <RibbonButton icon={<UndoIcon/>} label="Voltar para Projetos" onClick={onBackToProjects} active />
-                        <div className="w-[1px] h-8 bg-slate-700 mx-2"></div>
+                        {!lockedProjectId && (
+                            <>
+                                <RibbonButton icon={<UndoIcon/>} label="Voltar para Projetos" onClick={onBackToProjects} active />
+                                <div className="w-[1px] h-8 bg-slate-700 mx-2"></div>
+                            </>
+                        )}
                         
                         {/* New Proposal Group */}
                         <div className="relative">

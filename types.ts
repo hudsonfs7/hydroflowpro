@@ -125,6 +125,8 @@ export interface ProjectMetadata {
   proposals?: Proposal[];
   acceptedProposalId?: string;
   savedContract?: ContractData;
+  nextPipeIdx?: number;
+  nextNodeIdx?: number;
 }
 
 export interface PipeDiameterDefinition {
@@ -236,6 +238,7 @@ export interface DemandGroup {
 export interface PipeSegment {
   type: 'pipe';
   id: string;
+  name?: string;
   startNodeId: string;
   endNodeId: string;
   length: number;
@@ -287,6 +290,26 @@ export interface MDConfig {
   location: string;
   year: string;
   company: string;
+}
+
+export interface EVTEConfig {
+  saa: string;
+  local: string;
+  setor: string;
+  folha: string;
+  escala: string;
+  data: string;
+  obs: string;
+  tecnico: string;
+  matricula: string;
+  titulo: string; // ex: VIABILIDADE TÉCNICA
+}
+
+export interface EVTEPointInfo {
+  nome: string;
+  rede: string;
+  pressao: string;
+  coordenadas: string;
 }
 
 // --- CONTRACT TYPES ---
@@ -368,4 +391,13 @@ export interface NodeResult {
   nodeId: string;
   head: number;
   pressure: number;
+}
+
+export interface ProjectSnapshot {
+  nodes: Node[];
+  pipes: PipeSegment[];
+  results: CalculationResult[];
+  nodeResults: NodeResult[];
+  materials: Material[];
+  timestamp: number;
 }

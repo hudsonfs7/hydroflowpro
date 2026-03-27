@@ -217,10 +217,12 @@ export default function App() {
         if (selectedNodeId) {
           removeNode(selectedNodeId);
           setSelectedNodeId(null);
+          setSnapshot(null);
           showValidationToast("Nó removido.");
         } else if (selectedPipeId) {
           removePipe(selectedPipeId);
           setSelectedPipeId(null);
+          setSnapshot(null);
           showValidationToast("Trecho removido.");
         } else if (selectedAnnotationId) {
           removeAnnotation(selectedAnnotationId);
@@ -434,7 +436,17 @@ export default function App() {
     if (start?.geoPosition && end?.geoPosition && isMapMode) { initialLength = parseFloat(calculateGeoDistance(start.geoPosition, end.geoPosition).toFixed(2)); useCustom = false; }
     const mat = materials.find(m => m.id === drawMaterialId) || materials[0];
     const defaultDia = mat.availableDiameters.find(d => d.dn === drawDiameter) || mat.availableDiameters[0];
-    addPipe({ type: 'pipe', id: `p${pipes.length + 1}`, startNodeId: startId, endNodeId: endId, length: initialLength, diameter: defaultDia.di, nominalDiameter: defaultDia.dn, materialId: mat.id, flowRate: 0, distributedDemand: 0, fittings: [], useCustomLength: useCustom, vertices: initialVertices });
+    let nextIdx = (projectMetadata?.nextPipeIdx) || (Math.max(0, ...pipes.map(p => {
+        const n = parseInt(p.id.replace(/\D/g, '')) || 0;
+        return n < 1000000 ? n : 0;
+    })) + 1);
+    
+    const nextPipeId = `p${nextIdx}`;
+    const nextPipeName = `T${nextIdx}`;
+    
+    addPipe({ type: 'pipe', id: nextPipeId, name: nextPipeName, startNodeId: startId, endNodeId: endId, length: initialLength, diameter: defaultDia.di, nominalDiameter: defaultDia.dn, materialId: mat.id, flowRate: 0, distributedDemand: 0, fittings: [], useCustomLength: useCustom, vertices: initialVertices });
+    if (projectMetadata) setProjectMetadata({ ...projectMetadata, nextPipeIdx: nextIdx + 1 });
+    setSnapshot(null);
   };
 
   const openProperties = (type: 'node' | 'pipe' | 'ann', id: string) => {
@@ -483,10 +495,16 @@ export default function App() {
     if (pendingNodeType) {
         let lat = e.latlng.lat; let lng = e.latlng.lng;
         const pt = mapInstance.latLngToContainerPoint(e.latlng);
-        const newNodeId = `n${nodes.length + 1}`;
+        let nextIdx = (projectMetadata?.nextNodeIdx) || (Math.max(0, ...nodes.map(n => {
+            const num = parseInt(n.id.replace(/\D/g, '')) || 0;
+            return num < 1000000 ? num : 0;
+        })) + 1);
+        const newNodeId = `n${nextIdx}`;
         let namePrefix = 'Nó'; if (pendingNodeType === 'source') namePrefix = 'Res'; else if (pendingNodeType === 'well') namePrefix = 'Pç'; else if (pendingNodeType === 'pump') namePrefix = 'Bomba';
-        const newNode: Node = { id: newNodeId, type: pendingNodeType, x: pt.x, y: pt.y, geoPosition: { lat, lng }, elevation: 0, autoElevation: true, name: `${namePrefix} ${nodes.filter(n => n.type === pendingNodeType).length + 1}`, baseDemand: 0, showFlowLabel: false };
-        addNode(newNode); fetchElevation(lat, lng).then(z => { if (z !== null) updateNode(newNodeId, { elevation: z }); });
+        const newNode: Node = { id: newNodeId, type: pendingNodeType, x: pt.x, y: pt.y, geoPosition: { lat, lng }, elevation: 0, autoElevation: true, name: `${namePrefix} ${nextIdx}`, baseDemand: 0, showFlowLabel: false };
+        addNode(newNode); if (projectMetadata) setProjectMetadata({ ...projectMetadata, nextNodeIdx: nextIdx + 1 });
+        setSnapshot(null);
+        fetchElevation(lat, lng).then(z => { if (z !== null) updateNode(newNodeId, { elevation: z }); });
         setPendingNodeType(null); showValidationToast(`${newNode.name} criado!`);
         return;
     }
@@ -495,10 +513,16 @@ export default function App() {
         if (e.latlng) { lat = e.latlng.lat; lng = e.latlng.lng; const pt = mapInstance.latLngToContainerPoint(e.latlng); x = pt.x; y = pt.y; }
         if (drawPlacementMode === 'vertex') { if (!drawStartNodeId) { showValidationToast("Selecione um nó inicial."); return; } setDrawBufferVertices(prev => [...prev, { x, y, geoPosition: { lat, lng } }]); return; }
         const nodeTypeToCreate = nextDrawNodeType;
-        const newNodeId = `n${nodes.length + 1}`;
+        let nextIdx = (projectMetadata?.nextNodeIdx) || (Math.max(0, ...nodes.map(n => {
+            const num = parseInt(n.id.replace(/\D/g, '')) || 0;
+            return num < 1000000 ? num : 0;
+        })) + 1);
+        const newNodeId = `n${nextIdx}`;
         let namePrefix = 'Nó'; if (nodeTypeToCreate === 'source') namePrefix = 'Res'; else if (nodeTypeToCreate === 'well') namePrefix = 'Pç'; else if (nodeTypeToCreate === 'pump') namePrefix = 'Bomba';
-        const newNode: Node = { id: newNodeId, type: nodeTypeToCreate, x, y, geoPosition: { lat, lng }, elevation: 0, autoElevation: true, name: `${namePrefix} ${nodes.filter(n => n.type === nodeTypeToCreate).length + 1}`, baseDemand: 0, showFlowLabel: false };
-        addNode(newNode); fetchElevation(lat, lng).then(z => { if (z !== null) updateNode(newNodeId, { elevation: z }); });
+        const newNode: Node = { id: newNodeId, type: nodeTypeToCreate, x, y, geoPosition: { lat, lng }, elevation: 0, autoElevation: true, name: `${namePrefix} ${nextIdx}`, baseDemand: 0, showFlowLabel: false };
+        addNode(newNode); if (projectMetadata) setProjectMetadata({ ...projectMetadata, nextNodeIdx: nextIdx + 1 });
+        setSnapshot(null);
+        fetchElevation(lat, lng).then(z => { if (z !== null) updateNode(newNodeId, { elevation: z }); });
         if (drawStartNodeId) { createPipeBetween(drawStartNodeId, newNodeId, newNode, drawBufferVertices); setDrawBufferVertices([]); }
         setDrawStartNodeId(newNodeId); if (nodeTypeToCreate !== 'demand') setNextDrawNodeType('demand');
         return; 
@@ -795,7 +819,7 @@ export default function App() {
             node={wellNode} 
             updateNode={updateNode} 
             onClose={() => setActiveModal(null)} 
-            onDelete={() => { removeNode(wellNode.id); setActiveModal(null); }} 
+            onDelete={() => { removeNode(wellNode.id); setSnapshot(null); setActiveModal(null); }} 
             flowUnit={flowUnit} 
             fetchElevation={fetchElevation} 
           />
@@ -827,7 +851,7 @@ export default function App() {
             node={pumpNode} 
             updateNode={updateNode} 
             onClose={() => setActiveModal(null)} 
-            onDelete={() => { removeNode(pumpNode.id); setActiveModal(null); }} 
+            onDelete={() => { removeNode(pumpNode.id); setSnapshot(null); setActiveModal(null); }} 
             flowUnit={flowUnit} 
             actualFlow={actualFlow}
             actualHead={actualHead}
@@ -1078,8 +1102,8 @@ export default function App() {
                     {(selectedPipeId || selectedNodeId || selectedAnnotationId) ? (
                         <SidebarSegment title="Propriedades" icon={<SettingsIcon />}>
                              <React.Suspense fallback={null}>
-                                 {selectedPipeId && <EditorPanel selectedPipe={pipes.find(p => p.id === selectedPipeId)} updatePipe={updatePipe} materials={materials} addFitting={addFittingToPipe} updateFitting={updateFittingInPipe} handleMaterialChange={changePipeMaterial} handleDiameterChange={handleDiameterChange} handleDeletePipe={removePipe} closeEditor={() => setSelectedPipeId(null)} unitSystem={unitSystem} flowUnit={flowUnit} addVertex={addPipeVertex} resetVertices={(id: any) => updatePipe(id, { vertices: [] })} />}
-                                 {selectedNodeId && <EditorPanel selectedNode={nodes.find(n => n.id === selectedNodeId)} updateNode={updateNode} handleDeleteNode={removeNode} closeEditor={() => setSelectedNodeId(null)} unitSystem={unitSystem} flowUnit={flowUnit} fetchElevation={fetchElevation} isMapMode={isMapMode} coordFormat={coordFormat} />}
+                                 {selectedPipeId && <EditorPanel selectedPipe={pipes.find(p => p.id === selectedPipeId)} updatePipe={updatePipe} materials={materials} addFitting={addFittingToPipe} updateFitting={updateFittingInPipe} handleMaterialChange={changePipeMaterial} handleDiameterChange={handleDiameterChange} handleDeletePipe={(id: string) => { removePipe(id); setSnapshot(null); setSelectedPipeId(null); }} closeEditor={() => setSelectedPipeId(null)} unitSystem={unitSystem} flowUnit={flowUnit} addVertex={addPipeVertex} resetVertices={(id: any) => updatePipe(id, { vertices: [] })} />}
+                                 {selectedNodeId && <EditorPanel selectedNode={nodes.find(n => n.id === selectedNodeId)} updateNode={updateNode} handleDeleteNode={(id: string) => { removeNode(id); setSnapshot(null); setSelectedNodeId(null); }} closeEditor={() => setSelectedNodeId(null)} unitSystem={unitSystem} flowUnit={flowUnit} fetchElevation={fetchElevation} isMapMode={isMapMode} coordFormat={coordFormat} />}
                                  {selectedAnnotationId && <AnnotationEditor annotation={annotations.find(a => a.id === selectedAnnotationId)!} onUpdate={updateAnnotation} onDelete={(id) => { removeAnnotation(id); setSelectedAnnotationId(null); }} onClose={() => setSelectedAnnotationId(null)} />}
                              </React.Suspense>
                         </SidebarSegment>
@@ -1112,7 +1136,7 @@ export default function App() {
            <div className="flex-1 p-4 overflow-y-auto">
                <React.Suspense fallback={null}>
                    {sidebarMode === 'results' ? <ResultsContent calcError={calcError} calcWarning={calcWarning} results={snapshot?.results || []} nodes={snapshot?.nodes || []} pipes={snapshot?.pipes || []} materials={materials} nodeResults={snapshot?.nodeResults} flowUnit={flowUnit} unitSystem={unitSystem} selectedPipeId={selectedPipeId} setSelectedPipeId={setSelectedPipeId} setSelectedNodeId={setSelectedNodeId} setShowMobileResults={setShowSidebar} onOpenTable={() => setActiveModal({ type: 'FLEX_TABLE' })} calcMethod={calcMethod} projectMetadata={projectMetadata} visSettings={visSettings} setVisSettings={setVisSettings} mapStyle={mapStyle} setMapStyle={setMapStyle} mapInstance={mapInstance} globalC={globalC} globalRoughness={globalRoughness} />
-                   : <div className="animate-fade-in">{selectedPipeId && <EditorPanel selectedPipe={pipes.find(p => p.id === selectedPipeId)} updatePipe={updatePipe} materials={materials} addFitting={addFittingToPipe} updateFitting={updateFittingInPipe} handleMaterialChange={changePipeMaterial} handleDiameterChange={handleDiameterChange} handleDeletePipe={removePipe} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} addVertex={addPipeVertex} resetVertices={(id: any) => updatePipe(id, { vertices: [] })} />}{selectedNodeId && <EditorPanel selectedNode={nodes.find(n => n.id === selectedNodeId)} updateNode={updateNode} handleDeleteNode={removeNode} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} fetchElevation={fetchElevation} isMapMode={isMapMode} coordFormat={coordFormat} />}{selectedAnnotationId && <AnnotationEditor annotation={annotations.find(a => a.id === selectedAnnotationId)!} onUpdate={updateAnnotation} onDelete={(id) => { removeAnnotation(id); setSelectedAnnotationId(null); setShowSidebar(false); }} onClose={() => setShowSidebar(false)} />}</div>}
+                   : <div className="animate-fade-in">{selectedPipeId && <EditorPanel selectedPipe={pipes.find(p => p.id === selectedPipeId)} updatePipe={updatePipe} materials={materials} addFitting={addFittingToPipe} updateFitting={updateFittingInPipe} handleMaterialChange={changePipeMaterial} handleDiameterChange={handleDiameterChange} handleDeletePipe={(id: string) => { removePipe(id); setSnapshot(null); setSelectedPipeId(null); setShowSidebar(false); }} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} addVertex={addPipeVertex} resetVertices={(id: any) => updatePipe(id, { vertices: [] })} />}{selectedNodeId && <EditorPanel selectedNode={nodes.find(n => n.id === selectedNodeId)} updateNode={updateNode} handleDeleteNode={(id: string) => { removeNode(id); setSnapshot(null); setSelectedNodeId(null); setShowSidebar(false); }} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} fetchElevation={fetchElevation} isMapMode={isMapMode} coordFormat={coordFormat} />}{selectedAnnotationId && <AnnotationEditor annotation={annotations.find(a => a.id === selectedAnnotationId)!} onUpdate={updateAnnotation} onDelete={(id) => { removeAnnotation(id); setSelectedAnnotationId(null); setShowSidebar(false); }} onClose={() => setShowSidebar(false)} />}</div>}
                </React.Suspense>
            </div>
         </aside>

@@ -1,15 +1,17 @@
 
 import React, { useState } from 'react';
 import { 
-  FlowUnit, CalcMethod, SolverType, LabelPosition, VisualizationSettings, MDConfig, Node, PipeSegment, CalculationResult, NodeResult 
+  FlowUnit, CalcMethod, SolverType, LabelPosition, VisualizationSettings, MDConfig, Node, PipeSegment, CalculationResult, NodeResult, EVTEConfig, Material 
 } from '../types';
 import { GlobalSettingsInputs, DirectionControl } from './ResultsPanel';
 import { 
   CloseIcon, SettingsIcon, LayoutIcon, EyeIcon, 
-  CalculatorIcon, FileTextIcon, PlayIcon 
+  CalculatorIcon, FileTextIcon, PlayIcon, 
+  MapIcon
 } from './Icons';
 import { ModalContainer, InputGroup, SmartNumberInput } from './CommonUI';
 import { generateMD } from '../services/mdService';
+import { generateEVTE } from '../services/evteService';
 
 interface ConfigPopupProps {
   isOpen: boolean;
@@ -33,11 +35,14 @@ interface ConfigPopupProps {
   onApplyGlobal: () => void;
   mdConfig: MDConfig;
   setMdConfig: (cfg: MDConfig) => void;
+  evteConfig: EVTEConfig;
+  setEvteConfig: (cfg: EVTEConfig) => void;
   projectData: {
     nodes: Node[];
     pipes: PipeSegment[];
     results: CalculationResult[];
     nodeResults: NodeResult[];
+    materials: Material[];
   } | null;
 }
 
@@ -48,9 +53,10 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
   globalC, setGlobalC, globalRoughness, setGlobalRoughness,
   solverType, setSolverType, visSettings, setVisSettings,
   nodeLabelPos, setNodeLabelPos, nodeLabelOffset, setNodeLabelOffset,
-  onApplyGlobal, mdConfig, setMdConfig, projectData
+  onApplyGlobal, mdConfig, setMdConfig, 
+  evteConfig, setEvteConfig, projectData
 }) => {
-  const [activeTab, setActiveTab] = useState<ConfigTab>('calc');
+  const [activeTab, setActiveTab] = useState<ConfigTab | 'evte'>('calc');
   const selectClass = "w-full bg-white border border-slate-200 rounded-md px-3 py-1.5 text-[12px] text-slate-700 outline-none focus:border-blue-500 transition-all shadow-sm font-medium";
 
   const updateMD = (field: keyof MDConfig, val: string) => {
@@ -72,6 +78,43 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
       flowUnit,
       globalC,
       globalRoughness
+    );
+  };
+
+  const updateEVTE = (field: keyof EVTEConfig, val: string) => {
+    setEvteConfig({ ...evteConfig, [field]: val });
+  };
+
+  const handleGenerateEVTE = async () => {
+    if (!projectData) {
+      alert("É necessário calcular a rede antes de gerar a planta.");
+      return;
+    }
+
+    // Attempt to capture the map if possible
+    let mapImage = '';
+    const mapContainer = document.getElementById('network-map-container');
+    if (mapContainer) {
+      const { default: html2canvas } = await import('html2canvas');
+      const canvas = await html2canvas(mapContainer, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        scale: 2
+      });
+      mapImage = canvas.toDataURL('image/jpeg', 0.9);
+    }
+
+    generateEVTE(
+      evteConfig,
+      projectData.nodes,
+      projectData.pipes,
+      projectData.results,
+      projectData.nodeResults,
+      calcMethod,
+      flowUnit,
+      mapImage,
+      projectData.materials
     );
   };
 
@@ -97,6 +140,7 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
           <TabBtn active={activeTab === 'scale'} onClick={() => setActiveTab('scale')} label="Precisão de Zoom" icon={<LayoutIcon />} />
           <TabBtn active={activeTab === 'vis'} onClick={() => setActiveTab('vis')} label="Anotações" icon={<EyeIcon />} />
           <TabBtn active={activeTab === 'md'} onClick={() => setActiveTab('md')} label="MD (ABNT)" icon={<FileTextIcon />} />
+          <TabBtn active={activeTab === 'evte'} onClick={() => setActiveTab('evte')} label="EVTE Beta" icon={<MapIcon />} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
@@ -237,6 +281,72 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
               {!projectData && (
                 <p className="text-center text-[10px] text-red-400 font-bold animate-pulse">
                   ⚠️ Ative o motor de cálculo para incluir os resultados no memorial.
+                </p>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'evte' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-xl mb-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="text-indigo-600"><MapIcon /></div>
+                  <h3 className="text-sm font-bold text-indigo-900 uppercase">Estudo de Viabilidade (EVTE Beta)</h3>
+                </div>
+                <p className="text-[11px] text-indigo-700 leading-relaxed">
+                  Gere uma prancha técnica profissional com selo vertical, legenda de diâmetros 
+                  e área de assinatura, ideal para processos de viabilidade técnica.
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                <InputGroup label="Título da Folha">
+                  <input type="text" value={evteConfig.titulo} onChange={(e) => updateEVTE('titulo', e.target.value)} className={selectClass} />
+                </InputGroup>
+                <InputGroup label="SAA (Sistema)">
+                  <input type="text" value={evteConfig.saa} onChange={(e) => updateEVTE('saa', e.target.value)} className={selectClass} />
+                </InputGroup>
+                <InputGroup label="Local / Empreendimento">
+                  <input type="text" value={evteConfig.local} onChange={(e) => updateEVTE('local', e.target.value)} className={selectClass} />
+                </InputGroup>
+                <InputGroup label="Setor">
+                  <input type="text" value={evteConfig.setor} onChange={(e) => updateEVTE('setor', e.target.value)} className={selectClass} />
+                </InputGroup>
+                <InputGroup label="Escala">
+                  <input type="text" value={evteConfig.escala} onChange={(e) => updateEVTE('escala', e.target.value)} className={selectClass} />
+                </InputGroup>
+                <InputGroup label="Folha Nº">
+                  <input type="text" value={evteConfig.folha} onChange={(e) => updateEVTE('folha', e.target.value)} className={selectClass} />
+                </InputGroup>
+                <InputGroup label="Técnico Especialista">
+                  <input type="text" value={evteConfig.tecnico} onChange={(e) => updateEVTE('tecnico', e.target.value)} className={selectClass} />
+                </InputGroup>
+                <InputGroup label="Matrícula">
+                  <input type="text" value={evteConfig.matricula} onChange={(e) => updateEVTE('matricula', e.target.value)} className={selectClass} />
+                </InputGroup>
+                <div className="col-span-2">
+                   <InputGroup label="Observações do Estudo">
+                      <textarea 
+                        value={evteConfig.obs} 
+                        onChange={(e) => updateEVTE('obs', e.target.value)} 
+                        className={selectClass + " min-h-[80px] py-2"} 
+                      />
+                   </InputGroup>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-slate-100 flex justify-center">
+                <button 
+                  onClick={handleGenerateEVTE}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-10 rounded-xl shadow-lg flex items-center gap-3 transition-all active:scale-95"
+                >
+                  <MapIcon /> GERAR PLANTA EVTE BETA
+                </button>
+              </div>
+              
+              {!projectData && (
+                <p className="text-center text-[10px] text-red-400 font-bold animate-pulse">
+                  ⚠️ Ative o motor de cálculo para incluir os resultados na planta.
                 </p>
               )}
             </div>

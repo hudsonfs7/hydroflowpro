@@ -1,23 +1,57 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ModalContainer } from './CommonUI';
 import { CloseIcon, FilePdfIcon, FileSignatureIcon, CalculatorIcon } from './Icons';
 import { generateMD } from '../services/mdService';
+import { generateReport } from '../services/reportService';
 import { ContractEditorModal } from './ContractEditorModal';
-import { BudgetEditorModal } from './BudgetEditorModal'; // Novo Import
+import { BudgetEditorModal } from './BudgetEditorModal';
 
 interface DocumentToolsModalProps {
     onClose: () => void;
-    projectData: any; // Raw project JSON object (parsed)
+    projectData: any;
     userOrgName?: string;
 }
 
 export const DocumentToolsModal: React.FC<DocumentToolsModalProps> = ({ onClose, projectData, userOrgName }) => {
     const [status, setStatus] = useState<string | null>(null);
     const [showContractEditor, setShowContractEditor] = useState(false);
-    const [showBudgetEditor, setShowBudgetEditor] = useState(false); // Novo State
+    const [showBudgetEditor, setShowBudgetEditor] = useState(false);
+
+    const normalizedProjectData = useMemo(() => {
+        const snapshot = projectData?.snapshot;
+        const settings = projectData?.settings || {};
+        const flowUnit = projectData?.flowUnit || settings?.flowUnit || 'l/s';
+        const results = snapshot?.results || projectData?.results || [];
+        const totalFlowSI = results.reduce((sum: number, result: any) => sum + Math.abs(result?.flowRate || 0), 0);
+
+        const flowDisplay = flowUnit === 'm3/h'
+            ? totalFlowSI * 3600
+            : flowUnit === 'l/s'
+                ? totalFlowSI * 1000
+                : totalFlowSI / 0.0000630901964;
+
+        return {
+            ...projectData,
+            metadata: projectData?.metadata || projectData?.projectMetadata || null,
+            projectMetadata: projectData?.projectMetadata || projectData?.metadata || null,
+            nodes: snapshot?.nodes || projectData?.nodes || [],
+            pipes: snapshot?.pipes || projectData?.pipes || [],
+            results,
+            nodeResults: snapshot?.nodeResults || projectData?.nodeResults || [],
+            materials: snapshot?.materials || projectData?.materials || [],
+            flowUnit,
+            unitSystem: projectData?.unitSystem || settings?.unitSystem,
+            calcMethod: projectData?.calcMethod || settings?.calcMethod,
+            globalC: projectData?.globalC ?? settings?.globalC,
+            globalRoughness: projectData?.globalRoughness ?? settings?.globalRoughness,
+            totals: projectData?.totals || {
+                flowDisplay: Number.isFinite(flowDisplay) ? flowDisplay.toFixed(2) : '0.00'
+            }
+        };
+    }, [projectData]);
 
     const handleContract = () => {
-        if (!projectData?.metadata) {
+        if (!normalizedProjectData?.metadata) {
             alert("Dados do projeto incompletos para gerar contrato.");
             return;
         }
@@ -25,7 +59,7 @@ export const DocumentToolsModal: React.FC<DocumentToolsModalProps> = ({ onClose,
     };
 
     const handleBudget = () => {
-        if (!projectData?.metadata) {
+        if (!normalizedProjectData?.metadata) {
             alert("Dados do projeto incompletos para gerar orçamento.");
             return;
         }
@@ -33,17 +67,16 @@ export const DocumentToolsModal: React.FC<DocumentToolsModalProps> = ({ onClose,
     };
 
     const handleMemorial = () => {
-        if (!projectData?.results || projectData.results.length === 0) {
-            if(!confirm("Este projeto parece não ter resultados de cálculo salvos. O memorial pode ficar incompleto. Deseja continuar?")) {
+        const { results, nodes, pipes, nodeResults, metadata, mdConfig, settings } = normalizedProjectData;
+
+        if (results.length === 0) {
+            if (!confirm("Este projeto parece não ter resultados de cálculo salvos. O memorial pode ficar incompleto. Deseja continuar?")) {
                 return;
             }
         }
-        
+
         setStatus("Processando Memorial...");
         setTimeout(() => {
-            const { metadata, nodes, pipes, results, nodeResults, mdConfig, settings } = projectData;
-            
-            // Mescla configs salvas com metadados atuais
             const finalMdConfig = {
                 ...(mdConfig || {}),
                 title: metadata?.name || 'Projeto Hidráulico',
@@ -52,38 +85,52 @@ export const DocumentToolsModal: React.FC<DocumentToolsModalProps> = ({ onClose,
                 company: metadata?.consultant || 'Consultoria'
             };
 
-            // Fix: remove 8th argument from generateMD call as it only expects 7 arguments
             generateMD(
                 finalMdConfig,
-                nodes || [],
-                pipes || [],
-                results || [],
-                nodeResults || [],
-                settings?.calcMethod || 'Darcy-Weisbach',
-                settings?.flowUnit || 'l/s'
+                nodes,
+                pipes,
+                results,
+                nodeResults,
+                settings?.calcMethod || normalizedProjectData.calcMethod || 'Darcy-Weisbach',
+                settings?.flowUnit || normalizedProjectData.flowUnit || 'l/s'
             );
             setStatus(null);
             onClose();
         }, 500);
     };
 
-    if (showContractEditor && projectData?.metadata) {
+    const handleReport = () => {
+        if (normalizedProjectData.results.length === 0) {
+            if (!confirm("Este projeto parece não ter resultados de cálculo salvos. O relatório pode ficar incompleto. Deseja continuar?")) {
+                return;
+            }
+        }
+
+        setStatus("Processando Relatório...");
+        setTimeout(() => {
+            generateReport(normalizedProjectData);
+            setStatus(null);
+            onClose();
+        }, 500);
+    };
+
+    if (showContractEditor && normalizedProjectData?.metadata) {
         return (
-            <ContractEditorModal 
-                metadata={projectData.metadata} 
-                fullProjectData={projectData}
+            <ContractEditorModal
+                metadata={normalizedProjectData.metadata}
+                fullProjectData={normalizedProjectData}
                 userOrgName={userOrgName}
-                onClose={() => setShowContractEditor(false)} 
+                onClose={() => setShowContractEditor(false)}
             />
         );
     }
 
-    if (showBudgetEditor && projectData?.metadata) {
+    if (showBudgetEditor && normalizedProjectData?.metadata) {
         return (
-            <BudgetEditorModal 
-                metadata={projectData.metadata} 
+            <BudgetEditorModal
+                metadata={normalizedProjectData.metadata}
                 userOrgName={userOrgName}
-                onClose={() => setShowBudgetEditor(false)} 
+                onClose={() => setShowBudgetEditor(false)}
             />
         );
     }
@@ -95,11 +142,11 @@ export const DocumentToolsModal: React.FC<DocumentToolsModalProps> = ({ onClose,
                     <h3 className="font-bold text-slate-700 text-lg flex items-center gap-2">
                         Documentação do Projeto
                     </h3>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full text-slate-400 transition-colors"><CloseIcon/></button>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full text-slate-400 transition-colors"><CloseIcon /></button>
                 </div>
 
                 <div className="p-8 grid grid-cols-1 gap-4">
-                    <button 
+                    <button
                         onClick={handleBudget}
                         disabled={!!status}
                         className="flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 transition-all group text-left shadow-sm"
@@ -113,7 +160,7 @@ export const DocumentToolsModal: React.FC<DocumentToolsModalProps> = ({ onClose,
                         </div>
                     </button>
 
-                    <button 
+                    <button
                         onClick={handleContract}
                         disabled={!!status}
                         className="flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all group text-left shadow-sm"
@@ -127,7 +174,7 @@ export const DocumentToolsModal: React.FC<DocumentToolsModalProps> = ({ onClose,
                         </div>
                     </button>
 
-                    <button 
+                    <button
                         onClick={handleMemorial}
                         disabled={!!status}
                         className="flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-all group text-left shadow-sm"
@@ -138,6 +185,20 @@ export const DocumentToolsModal: React.FC<DocumentToolsModalProps> = ({ onClose,
                         <div>
                             <h4 className="font-bold text-slate-800 text-sm uppercase">Gerar Memorial Descritivo</h4>
                             <p className="text-xs text-slate-500 mt-1">Relatório técnico completo (ABNT) com tabelas de cálculo e resultados da simulação.</p>
+                        </div>
+                    </button>
+
+                    <button
+                        onClick={handleReport}
+                        disabled={!!status}
+                        className="flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all group text-left shadow-sm"
+                    >
+                        <div className="bg-white p-3 rounded-full shadow-sm text-slate-600 group-hover:scale-110 transition-transform">
+                            <FilePdfIcon />
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-slate-800 text-sm uppercase">Relatório Técnico</h4>
+                            <p className="text-xs text-slate-500 mt-1">Documento técnico da rede com tabelas de pressão, vazão e croqui ilustrativo.</p>
                         </div>
                     </button>
                 </div>

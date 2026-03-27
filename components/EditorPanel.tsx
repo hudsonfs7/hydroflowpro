@@ -201,7 +201,10 @@ export const EditorPanel = ({
         {selectedPipe && (
           <>
             <InputGroup label="Identificação">
-              <div className="text-sm font-mono bg-slate-100 p-2 rounded text-slate-600 border border-slate-200">{selectedPipe.id}</div>
+              <div className="flex gap-2">
+                <div className="text-sm font-mono bg-slate-100 p-2 rounded text-slate-600 border border-slate-200 w-16 text-center">{selectedPipe.id}</div>
+                <input type="text" value={selectedPipe.name || `T${selectedPipe.id.replace(/\D/g, '')}`} onChange={(e) => updatePipe?.(selectedPipe.id, { name: e.target.value })} className="flex-1 bg-white border border-slate-300 rounded p-2 text-sm outline-none focus:border-accent" placeholder="Nome do Trecho" />
+              </div>
             </InputGroup>
 
             <InputGroup label="Material">

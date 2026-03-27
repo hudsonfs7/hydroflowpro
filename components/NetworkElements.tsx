@@ -133,7 +133,7 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
         else if (idLower.includes('ff') || idLower.includes('ferro')) simpleMatName = 'FoFo'; 
         else simpleMatName = material.name.split(' ')[0];
     }
-    const pipeLabel = reportMode ? `${simpleMatName}` : `T${pipe.id.replace(/^p/i, '')} - ${simpleMatName} - DN${pipe.nominalDiameter || pipe.diameter}`; 
+    const pipeLabel = reportMode ? `${simpleMatName}` : `${pipe.name || `T${pipe.id.replace(/^p/i, '')}`} - ${simpleMatName} - DN${pipe.nominalDiameter || pipe.diameter}`; 
     const lenUnit = unitSystem === UnitSystem.SI ? 'm' : 'ft';
     
     let displayFlow = "0";
