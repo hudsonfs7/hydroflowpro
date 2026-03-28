@@ -527,10 +527,12 @@ export const generateBudgetHtml = (data: BudgetData) => {
                         <div class="client-col-left">
                             <span class="label-sm">Contratante</span>
                             <div class="val-contratante">${data.clientName}</div>
+                            ${data.clientCnpj ? `<div style="font-size: 9px; font-weight: 700; color: #94a3b8; margin-top: 2px;">CNPJ: ${data.clientCnpj}</div>` : ''}
                         </div>
                         <div class="client-col-right">
                             <span class="label-sm">Empreendimento</span>
                             <div class="val-projeto">${data.projectName} - ${data.city}</div>
+                            ${data.clientCnpj ? `<div style="font-size: 9px; font-weight: 700; color: #94a3b8; margin-top: 2px;">CNPJ: ${data.clientCnpj}</div>` : ''}
                         </div>
                     </div>
                     ${isSubdivision ? `

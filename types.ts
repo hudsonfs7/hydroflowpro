@@ -353,6 +353,7 @@ export interface BudgetItem {
 export interface BudgetData {
     companyName: string; 
     clientName: string;  
+    clientCnpj?: string; // New field
     projectName: string;
     city: string;
     date: string;

@@ -337,6 +337,7 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
         const budgetData: BudgetData = { 
             companyName: contractorName, 
             clientName: metadata.company || 'CLIENTE', 
+            clientCnpj: metadata.companyCnpj, 
             projectName: metadata.name, 
             city: metadata.city, 
             date: new Date().toLocaleDateString('pt-BR'), 
@@ -676,10 +677,12 @@ export const BudgetEditorModal: React.FC<BudgetEditorModalProps> = ({ metadata, 
                                     <div className="pl-3 flex-1" style={{borderLeft: `4px solid ${pColor}`}}>
                                         <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Contratante</label>
                                         <div className="text-xs font-black text-slate-800 uppercase leading-snug">{metadata.company || '---'}</div>
+                                        {metadata.companyCnpj && <div className="text-[9px] font-bold text-slate-400 mt-0.5 tracking-tight">CNPJ: {metadata.companyCnpj}</div>}
                                     </div>
                                     <div className="border-l-4 border-slate-300 pl-3 flex-1">
                                         <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Empreendimento</label>
                                         <div className="text-xs font-bold text-slate-700 leading-snug">{metadata.name} - {metadata.city}</div>
+                                        {metadata.companyCnpj && <div className="text-[9px] font-bold text-slate-400 mt-0.5 tracking-tight">CNPJ: {metadata.companyCnpj}</div>}
                                     </div>
                                 </div>
                             </div>
