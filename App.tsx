@@ -36,6 +36,7 @@ const ProjectSelectorModal = React.lazy(() => import('./components/ProjectSelect
 const LoginModal = React.lazy(() => import('./components/LoginModal').then(m => ({ default: m.LoginModal })));
 const UserManagerModal = React.lazy(() => import('./components/UserManagerModal').then(m => ({ default: m.UserManagerModal })));
 const BudgetEditorModal = React.lazy(() => import('./components/BudgetEditorModal').then(m => ({ default: m.BudgetEditorModal })));
+const DocumentToolsModal = React.lazy(() => import('./components/DocumentToolsModal').then(m => ({ default: m.DocumentToolsModal })));
 import { SplashScreen } from './components/SplashScreen';
 
 import { generateDXF } from './services/dxfService'; 
@@ -47,7 +48,7 @@ import { COMMON_FITTINGS } from './constants';
 import { useProjectData } from './hooks/useProjectData';
 import L from 'leaflet';
 
-type ModalView = 'CONFIG' | 'QUICK_CALC' | 'FLEX_TABLE' | 'WELL_EDITOR' | 'PUMP_EDITOR' | 'CREATE_PROJECT' | 'USER_MANAGER' | 'BUDGET' | null;
+type ModalView = 'CONFIG' | 'QUICK_CALC' | 'FLEX_TABLE' | 'WELL_EDITOR' | 'PUMP_EDITOR' | 'CREATE_PROJECT' | 'USER_MANAGER' | 'BUDGET' | 'PROJECT_DOCS' | null;
 
 const CachedTileLayer = L.TileLayer.extend({
   createTile: function (coords: L.Coords, done: L.DoneCallback) {
@@ -900,13 +901,25 @@ export default function App() {
         ) : null;
       }
       case 'BUDGET':
-        if (!projectMetadata) return null;
         return (
             <BudgetEditorModal 
                 metadata={projectMetadata} 
                 userOrgName={currentOrgName}
                 onClose={() => setActiveModal(null)} 
                 initialProposalId={activeModal.data}
+            />
+        );
+      case 'PROJECT_DOCS':
+        const docsData = activeModal.data || {
+            nodes, pipes, demandGroups, annotations, annotationGroups, mdConfig,
+            metadata: projectMetadata,
+            snapshot: snapshot || { nodes, pipes, results: [], nodeResults: [], materials }
+        };
+        return (
+            <DocumentToolsModal
+                projectData={docsData}
+                userOrgName={currentOrgName}
+                onClose={() => setActiveModal(null)}
             />
         );
       default:
@@ -956,21 +969,27 @@ export default function App() {
             <button onClick={() => setShowProjectMenu(!showProjectMenu)} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-md font-medium text-xs"><FolderIcon /> <span className="hidden md:inline">Projeto</span></button>
             {showProjectMenu && (
                 <div className="absolute top-10 right-0 w-64 bg-white shadow-2xl rounded-lg border border-slate-200 py-1 flex flex-col z-50 animate-fade-in overflow-hidden">
-                    <div className="px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 border-b border-slate-100">Nuvem</div>
                     {currentUser ? (
                         <>
                             <div className="px-4 py-2 text-xs text-slate-500 border-b border-slate-100 flex flex-col">
                                 <span className="font-bold text-slate-800">{currentUser.username}</span>
                                 <span className="text-[10px]">{currentUser.organizationId === 'MASTER_ACCESS' ? 'Master Admin' : currentOrgName || currentUser.organizationId}</span>
                             </div>
-                            <button onClick={handleProjectsClick} className="flex items-center gap-2 px-4 py-2.5 hover:bg-blue-50 text-blue-700 text-xs text-left w-full font-bold transition-colors"><CloudIcon /> Gerenciar Projetos</button>
+                            <div className="px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 border-b border-slate-100">Projetos</div>
+                            <button onClick={handleProjectsClick} className="flex items-center gap-2 px-4 py-2.5 hover:bg-blue-50 text-blue-700 text-xs text-left w-full font-bold transition-colors"><CloudIcon /> Gerenciar</button>
                             <button onClick={handleCloudSave} disabled={!projectMetadata} className={`flex items-center gap-2 px-4 py-2.5 text-xs text-left w-full transition-colors ${projectMetadata ? 'hover:bg-blue-50 text-blue-700 font-bold' : 'text-slate-300 cursor-not-allowed bg-slate-50 opacity-60'}`}>
-                                <SaveIcon /> Salvar Atualmente
+                                <SaveIcon /> Salvar
+                            </button>
+                            <button onClick={() => { setIsProjectSelectorOpen(true); setShowProjectMenu(false); }} className="flex items-center gap-2 px-4 py-2.5 hover:bg-blue-50 text-blue-700 text-xs text-left w-full font-bold transition-colors">
+                                <FolderIcon /> Abrir
                             </button>
                             <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2.5 hover:bg-red-50 text-red-600 text-xs text-left w-full font-bold transition-colors border-t border-slate-100"><CloseIcon /> Sair (Logout)</button>
                         </>
                     ) : (
-                        <button onClick={handleProjectsClick} className="flex items-center gap-2 px-4 py-2.5 hover:bg-blue-50 text-blue-700 text-xs text-left w-full font-bold transition-colors"><UserIcon /> Entrar / Login</button>
+                        <>
+                            <div className="px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 border-b border-slate-100">Nuvem</div>
+                            <button onClick={handleProjectsClick} className="flex items-center gap-2 px-4 py-2.5 hover:bg-blue-50 text-blue-700 text-xs text-left w-full font-bold transition-colors"><UserIcon /> Entrar / Login</button>
+                        </>
                     )}
                     <div className="px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 border-y border-slate-100">Arquivo Local</div>
                     <button onClick={() => { 
@@ -1188,7 +1207,6 @@ export default function App() {
               <ProjectManagerModal 
                   refreshKey={managerRefreshKey}
                   onClose={() => setIsProjectManagerOpen(false)}
-                  onCreateNew={() => setActiveModal({ type: 'CREATE_PROJECT' })}
                   currentUser={currentUser}
                   userOrgName={currentOrgName}
                   onOpenFinance={() => {
@@ -1198,6 +1216,11 @@ export default function App() {
                   onOpenAdmin={() => { 
                       setIsProjectManagerOpen(false);
                       setActiveModal({ type: 'USER_MANAGER' }); 
+                  }}
+                  activeProjectId={projectMetadata?._id}
+                  onOpenDocuments={(projData: any) => {
+                      setIsProjectManagerOpen(false);
+                      setActiveModal({ type: 'PROJECT_DOCS', data: projData });
                   }}
                   onEditMetadata={(sel: any) => {
                       try {
