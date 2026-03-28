@@ -29,7 +29,7 @@ interface NetworkNodeProps {
   node: Node;
   isSelected: boolean;
   isDrawStart?: boolean;
-  resultDisplay: { cp: number; p: number } | undefined;
+  resultDisplay: { head: number; pressure: number } | undefined;
   globalLabelPos: LabelPosition;
   globalLabelOffset: number;
   globalScale?: number;
@@ -149,11 +149,13 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
     const lenDisplay = (pipe.length !== undefined && pipe.length !== null) ? pipe.length.toFixed(1) : "0.0";
 
     const pipeColor = getPipeColor(pipe.nominalDiameter, isSelected);
-    const strokeWidth = (isSelected ? 4 : 2) * globalScale; 
-    const hitAreaWidth = 30 * globalScale; 
-    const showText = globalScale > 0.4; 
 
-    const fontSize = (reportMode ? 14 : 10) * globalScale;
+    const fontSize = Math.min(24, (reportMode ? 14 : 10) * globalScale);
+    const effectiveScale = Math.min(globalScale, 5);
+
+    const strokeWidth = (isSelected ? 4 : 2) * effectiveScale; 
+    const hitAreaWidth = 30 * effectiveScale; 
+    const showText = globalScale > 0.4; 
 
     return (
         <g 
@@ -167,15 +169,21 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
             <polyline points={pointsStr} fill="none" stroke="transparent" strokeWidth={hitAreaWidth} strokeLinejoin="round" />
             <polyline points={pointsStr} fill="none" stroke={pipeColor} strokeWidth={strokeWidth} strokeLinejoin="round" className="transition-colors" strokeOpacity={isSelected ? 1 : 0.9} />
             {isSelected && safeVertices.map((v, idx) => ( 
-                <circle key={idx} cx={v.x} cy={v.y} r={7 * globalScale} fill="white" stroke={pipeColor} strokeWidth={2 * globalScale} className="cursor-move" onMouseDown={(e) => handlers.onVertexMouseDown(e, pipe.id, idx)} onTouchStart={(e) => handlers.onVertexMouseDown(e, pipe.id, idx)} /> 
+                <circle key={idx} cx={v.x} cy={v.y} r={7 * effectiveScale} fill="white" stroke={pipeColor} strokeWidth={2 * effectiveScale} className="cursor-move" onMouseDown={(e) => handlers.onVertexMouseDown(e, pipe.id, idx)} onTouchStart={(e) => handlers.onVertexMouseDown(e, pipe.id, idx)} /> 
             ))}
             {hasFlow && !showDemandValues && showText && ( 
-                <polygon points={`${labelX-5*globalScale},${labelY-5*globalScale} ${labelX+5*globalScale},${labelY} ${labelX-5*globalScale},${labelY+5*globalScale}`} fill={pipeColor} transform={`rotate(${arrowAngle}, ${labelX}, ${labelY})`} /> 
+                <polygon 
+                    points={`${-5*effectiveScale},${-5*effectiveScale} ${5*effectiveScale},0 ${-5*effectiveScale},${5*effectiveScale}`} 
+                    fill={pipeColor} 
+                    transform={`translate(${labelX}, ${labelY}) rotate(${arrowAngle})`} 
+                /> 
             )}
             {showText && (
                 <g transform={`translate(${labelX}, ${labelY}) rotate(${textAngle})`}>
-                    <text y={-12 * globalScale} textAnchor="middle" className="fill-slate-800 font-bold font-mono select-none pointer-events-none" style={{textShadow: '0px 0px 4px rgba(255,255,255,0.8)', fontSize: `${fontSize}px`}}>{pipeLabel}</text>
-                    <text y={16 * globalScale} textAnchor="middle" className="fill-slate-600 font-mono select-none pointer-events-none" style={{textShadow: '0px 0px 4px rgba(255,255,255,0.8)', fontSize: `${fontSize}px`}}>
+                    <text y={-12 * effectiveScale} textAnchor="middle" className="fill-slate-800 font-bold font-mono select-none pointer-events-none" style={{textShadow: '0px 0px 4px rgba(255,255,255,0.8)', fontSize: `${fontSize}px`}}>
+                         {pipeLabel}
+                    </text>
+                    <text y={16 * effectiveScale} textAnchor="middle" className="fill-slate-600 font-mono select-none pointer-events-none" style={{textShadow: '0px 0px 4px rgba(255,255,255,0.8)', fontSize: `${fontSize}px`}}>
                         {(!reportMode && showFlowValue) ? `${displayFlow} ${flowUnit} - ` : ''}{lenDisplay}{lenUnit}
                     </text>
                 </g>
@@ -187,8 +195,9 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
 export const NetworkJunction: React.FC<NetworkNodeProps> = ({ 
   node, isSelected, isDrawStart, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1, reportMode = false
 }) => {
-    const cpVal = resultDisplay ? resultDisplay.cp : (node.elevation + (node.pressureHead || 0));
-    const pVal = resultDisplay ? resultDisplay.p : (node.pressureHead || 0);
+    // FIX: NodeResult use 'head' and 'pressure', NOT 'cp' and 'p'
+    const cpVal = resultDisplay ? resultDisplay.head : (node.elevation + (node.pressureHead || 0));
+    const pVal = resultDisplay ? resultDisplay.pressure : (node.pressureHead || 0);
     const ctVal = node.elevation;
     const pos = node.labelPosition || globalLabelPos;
     const isRight = pos.includes('right');
@@ -199,9 +208,11 @@ export const NetworkJunction: React.FC<NetworkNodeProps> = ({
     if (isBottom && isRight) angle = 45;
     if (isBottom && !isRight) angle = 135;
     const rad = angle * (Math.PI / 180);
-    const r = 10 * globalScale; 
-    const diagLen = Math.max(10 * globalScale, globalLabelOffset * globalScale); 
-    const shelfLen = (reportMode ? 40 : 60) * globalScale;
+
+    const effectiveScale = Math.min(globalScale, 5);
+    const r = 10 * effectiveScale; 
+    const diagLen = Math.max(10 * effectiveScale, globalLabelOffset * effectiveScale); 
+    const shelfLen = (reportMode ? 40 : 60) * effectiveScale;
     const x1 = Math.cos(rad) * r;
     const y1 = Math.sin(rad) * r;
     const x2 = Math.cos(rad) * (r + diagLen);
@@ -209,23 +220,23 @@ export const NetworkJunction: React.FC<NetworkNodeProps> = ({
     const x3 = isRight ? x2 + shelfLen : x2 - shelfLen;
     const y3 = y2;
     const shelfMidX = (x2 + x3) / 2;
-    const pX = x3 + (isRight ? 5 * globalScale : -5 * globalScale);
+    const pX = x3 + (isRight ? 5 * effectiveScale : -5 * effectiveScale);
     const pAnchor = isRight ? "start" : "end";
-    const yCP = y2 - (6 * globalScale); 
-    const yCT = y2 + (13 * globalScale);
-    const yP = y2 + (2 * globalScale);  
+    const yCP = y2 - (6 * effectiveScale); 
+    const yCT = y2 + (13 * effectiveScale);
+    const yP = y2 + (2 * effectiveScale);  
     const strokeColor = isSelected ? '#3b82f6' : '#dc2626';
     const showFlow = node.showFlowLabel && node.baseDemand;
     const flowLabel = showFlow ? `Q=${node.baseDemand}` : null;
-    const nodeStrokeWidth = (isSelected ? 2.5 : 1.5) * globalScale;
-    const connectorWidth = 1 * globalScale;
+    const nodeStrokeWidth = (isSelected ? 2.5 : 1.5) * effectiveScale;
+    const connectorWidth = 1 * effectiveScale;
     const cpDisp = (typeof cpVal === 'number') ? cpVal.toFixed(2) : "0.00";
     const ctDisp = (typeof ctVal === 'number') ? ctVal.toFixed(2) : "0.00";
     const pDisp = (typeof pVal === 'number') ? pVal.toFixed(2) : "0.00";
     const showText = globalScale > 0.4;
-    const fontSizeMain = 10 * globalScale;
-    const fontSizeLarge = (reportMode ? 14 : 11) * globalScale;
-    const fontSizeSmall = 9 * globalScale;
+    const fontSizeMain = Math.min(18, 10 * globalScale);
+    const fontSizeLarge = Math.min(24, (reportMode ? 14 : 11) * globalScale);
+    const fontSizeSmall = Math.min(16, 9 * globalScale);
 
     return (
         <g 
@@ -252,12 +263,12 @@ export const NetworkJunction: React.FC<NetworkNodeProps> = ({
                 </>
             )}
             <circle r={r} fill="white" stroke={strokeColor} strokeWidth={nodeStrokeWidth} />
-            {isDrawStart && <circle r={14 * globalScale} fill="none" stroke="#f97316" strokeWidth={2 * globalScale} strokeDasharray="4 2" className="animate-spin-slow" />}
+            {isDrawStart && <circle r={14 * effectiveScale} fill="none" stroke="#f97316" strokeWidth={2 * effectiveScale} strokeDasharray="4 2" className="animate-spin-slow" />}
             {globalScale > 0.3 && (
-                 <text x={0} y={3 * globalScale} textAnchor="middle" fontSize={fontSizeMain} fontWeight="bold" fill="#1e293b" className="select-none font-sans">{node.id.replace(/\D/g, '')}</text>
+                 <text x={0} y={3 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontWeight="bold" fill="#1e293b" className="select-none font-sans">{node.id.replace(/\D/g, '')}</text>
             )}
             {flowLabel && showText && (
-                <text x={0} y={20 * globalScale} textAnchor="middle" fontSize={fontSizeSmall} fontWeight="bold" fill="#059669" className="select-none font-mono bg-white">{flowLabel}</text>
+                <text x={0} y={20 * effectiveScale} textAnchor="middle" fontSize={fontSizeSmall} fontWeight="bold" fill="#059669" className="select-none font-mono bg-white">{flowLabel}</text>
             )}
         </g>
     );
@@ -266,8 +277,8 @@ export const NetworkJunction: React.FC<NetworkNodeProps> = ({
 export const NetworkReservoir: React.FC<NetworkNodeProps> = ({ 
   node, isSelected, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1 
 }) => {
-    const cpVal = resultDisplay ? resultDisplay.cp : (node.elevation + (node.pressureHead || 0));
-    const pVal = resultDisplay ? resultDisplay.p : (node.pressureHead || 0);
+    const cpVal = resultDisplay ? resultDisplay.head : (node.elevation + (node.pressureHead || 0));
+    const pVal = resultDisplay ? resultDisplay.pressure : (node.pressureHead || 0);
     const ctVal = node.elevation;
     const pos = node.labelPosition || globalLabelPos;
     const isRight = pos.includes('right');
@@ -278,9 +289,11 @@ export const NetworkReservoir: React.FC<NetworkNodeProps> = ({
     if (isBottom && isRight) angle = 45;
     if (isBottom && !isRight) angle = 135;
     const rad = angle * (Math.PI / 180);
-    const r = 12 * globalScale; 
-    const diagLen = Math.max(10 * globalScale, globalLabelOffset * globalScale); 
-    const shelfLen = 60 * globalScale;
+
+    const effectiveScale = Math.min(globalScale, 5);
+    const r = 12 * effectiveScale; 
+    const diagLen = Math.max(10 * effectiveScale, globalLabelOffset * effectiveScale); 
+    const shelfLen = 60 * effectiveScale;
     const x1 = Math.cos(rad) * r;
     const y1 = Math.sin(rad) * r;
     const x2 = Math.cos(rad) * (r + diagLen);
@@ -288,21 +301,21 @@ export const NetworkReservoir: React.FC<NetworkNodeProps> = ({
     const x3 = isRight ? x2 + shelfLen : x2 - shelfLen;
     const y3 = y2;
     const shelfMidX = (x2 + x3) / 2;
-    const pX = x3 + (isRight ? 5 * globalScale : -5 * globalScale);
+    const pX = x3 + (isRight ? 5 * effectiveScale : -5 * effectiveScale);
     const pAnchor = isRight ? "start" : "end";
-    const yCP = y2 - (6 * globalScale);
-    const yCT = y2 + (13 * globalScale);
-    const yP = y2 + (2 * globalScale);
+    const yCP = y2 - (6 * effectiveScale);
+    const yCT = y2 + (13 * effectiveScale);
+    const yP = y2 + (2 * effectiveScale);
     const strokeColor = isSelected ? '#3b82f6' : '#0ea5e9';
-    const nodeStrokeWidth = (isSelected ? 2.5 : 1.5) * globalScale;
-    const connectorWidth = 1 * globalScale;
+    const nodeStrokeWidth = (isSelected ? 2.5 : 1.5) * effectiveScale;
+    const connectorWidth = 1 * effectiveScale;
     const cpDisp = (typeof cpVal === 'number') ? cpVal.toFixed(2) : "0.00";
     const ctDisp = (typeof ctVal === 'number') ? ctVal.toFixed(2) : "0.00";
     const pDisp = (typeof pVal === 'number') ? pVal.toFixed(2) : "0.00";
     const showText = globalScale > 0.4;
-    const fontSizeMain = 10 * globalScale;
-    const fontSizeLarge = 11 * globalScale;
-    const rectSize = 24 * globalScale;
+    const fontSizeMain = Math.min(18, 10 * globalScale);
+    const fontSizeLarge = Math.min(24, 11 * globalScale);
+    const rectSize = 24 * effectiveScale;
     const halfRect = rectSize / 2;
 
     return (
@@ -326,9 +339,9 @@ export const NetworkReservoir: React.FC<NetworkNodeProps> = ({
                 </>
             )}
             <rect x={-halfRect} y={-halfRect} width={rectSize} height={rectSize} rx={2} fill="white" stroke={strokeColor} strokeWidth={nodeStrokeWidth} />
-            <line x1={-9 * globalScale} y1={3 * globalScale} x2={9 * globalScale} y2={3 * globalScale} stroke={strokeColor} strokeWidth={1.5 * globalScale} strokeDasharray="3 2" />
+            <line x1={-9 * effectiveScale} y1={3 * effectiveScale} x2={9 * effectiveScale} y2={3 * effectiveScale} stroke={strokeColor} strokeWidth={1.5 * effectiveScale} strokeDasharray="3 2" />
             {showText && (
-                <text x={0} y={-16 * globalScale} textAnchor="middle" fontSize={fontSizeMain} fontWeight="bold" fill={strokeColor} className="select-none font-sans">{node.name}</text>
+                <text x={0} y={-16 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontWeight="bold" fill={strokeColor} className="select-none font-sans">{node.name}</text>
             )}
         </g>
     );
@@ -342,7 +355,7 @@ export const NetworkWell: React.FC<NetworkNodeProps> = ({
     const ndVal = node.dynamicLevel || 0;
     const dnVal = node.wellDiameter || 0;
     const qVal = node.maxFlow || 0;
-    const pVal = resultDisplay ? resultDisplay.p : undefined;
+    const pVal = resultDisplay ? resultDisplay.pressure : undefined;
     const pos = node.labelPosition || globalLabelPos;
     const isRight = pos.includes('right');
     const isBottom = pos.includes('bottom');
@@ -352,9 +365,11 @@ export const NetworkWell: React.FC<NetworkNodeProps> = ({
     if (isBottom && isRight) angle = 45;
     if (isBottom && !isRight) angle = 135;
     const rad = angle * (Math.PI / 180);
-    const r = 12 * globalScale; 
-    const diagLen = Math.max(10 * globalScale, globalLabelOffset * globalScale); 
-    const shelfLen = 85 * globalScale; 
+
+    const effectiveScale = Math.min(globalScale, 5);
+    const r = 12 * effectiveScale; 
+    const diagLen = Math.max(10 * effectiveScale, globalLabelOffset * effectiveScale); 
+    const shelfLen = 85 * effectiveScale; 
     const x1 = Math.cos(rad) * r;
     const y1 = Math.sin(rad) * r;
     const x2 = Math.cos(rad) * (r + diagLen);
@@ -362,22 +377,22 @@ export const NetworkWell: React.FC<NetworkNodeProps> = ({
     const x3 = isRight ? x2 + shelfLen : x2 - shelfLen;
     const y3 = y2;
     const shelfMidX = (x2 + x3) / 2;
-    const yAboveLine = y2 - (6 * globalScale);
-    const yBelowL1 = y2 + (12 * globalScale);
-    const yBelowL2 = y2 + (22 * globalScale);
-    const pX = x3 + (isRight ? 5 * globalScale : -5 * globalScale);
+    const yAboveLine = y2 - (6 * effectiveScale);
+    const yBelowL1 = y2 + (12 * effectiveScale);
+    const yBelowL2 = y2 + (22 * effectiveScale);
+    const pX = x3 + (isRight ? 5 * effectiveScale : -5 * effectiveScale);
     const pAnchor = isRight ? "start" : "end";
-    const pY = y2 + (2 * globalScale); 
+    const pY = y2 + (2 * effectiveScale); 
     const strokeColor = isSelected ? '#3b82f6' : '#6366f1'; 
-    const nodeStrokeWidth = (isSelected ? 2.5 : 1.5) * globalScale;
-    const connectorWidth = 1 * globalScale;
+    const nodeStrokeWidth = (isSelected ? 2.5 : 1.5) * effectiveScale;
+    const connectorWidth = 1 * effectiveScale;
     const showText = globalScale > 0.4;
-    const fontSizeMain = 9 * globalScale;
-    const fontSizeLarge = 11 * globalScale;
-    const iconSize = 24 * globalScale;
+    const fontSizeMain = Math.min(16, 9 * globalScale);
+    const fontSizeLarge = Math.min(24, 11 * globalScale);
+    const iconSize = 24 * effectiveScale;
     const halfIcon = iconSize / 2;
-    const yIconLabel1 = halfIcon + (12 * globalScale);
-    const yIconLabel2 = halfIcon + (22 * globalScale);
+    const yIconLabel1 = halfIcon + (12 * effectiveScale);
+    const yIconLabel2 = halfIcon + (22 * effectiveScale);
 
     return (
         <g 
@@ -407,11 +422,11 @@ export const NetworkWell: React.FC<NetworkNodeProps> = ({
                 </>
             )}
             <rect x={-halfIcon} y={-halfIcon} width={iconSize} height={iconSize} fill="white" stroke={strokeColor} strokeWidth={nodeStrokeWidth} />
-            <circle r={4 * globalScale} fill={strokeColor} />
+            <circle r={4 * effectiveScale} fill={strokeColor} />
             <line x1={0} y1={-halfIcon} x2={0} y2={halfIcon} stroke={strokeColor} strokeWidth={1} />
             <line x1={-halfIcon} y1={0} x2={halfIcon} y2={0} stroke={strokeColor} strokeWidth={1} />
             {showText && (
-                <text x={0} y={-16 * globalScale} textAnchor="middle" fontSize={10 * globalScale} fontWeight="bold" fill={strokeColor} className="select-none font-sans">{node.name}</text>
+                <text x={0} y={-16 * effectiveScale} textAnchor="middle" fontSize={10 * effectiveScale} fontWeight="bold" fill={strokeColor} className="select-none font-sans">{node.name}</text>
             )}
         </g>
     );
@@ -420,8 +435,8 @@ export const NetworkWell: React.FC<NetworkNodeProps> = ({
 export const NetworkPump: React.FC<NetworkNodeProps> = ({ 
   node, isSelected, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1, suctionNodeId, nodesContext = [], pumpExtraData
 }) => {
-    const cpjVal = resultDisplay ? resultDisplay.cp : node.elevation;
-    const pjVal = resultDisplay ? resultDisplay.p : 0;
+    const cpjVal = resultDisplay ? resultDisplay.head : node.elevation;
+    const pjVal = resultDisplay ? resultDisplay.pressure : 0;
     const ctVal = node.elevation;
     const pmVal = pumpExtraData?.Pm || 0;
     const hVal = pumpExtraData?.H || 0;
@@ -439,12 +454,13 @@ export const NetworkPump: React.FC<NetworkNodeProps> = ({
     
     const angle1 = angle2 + 180;
 
-    const r = 12 * globalScale; 
-    const diagLen = Math.max(12 * globalScale, globalLabelOffset * globalScale); 
-    const shelfLen = 80 * globalScale;
+    const effectiveScale = Math.min(globalScale, 5);
+    const r = 12 * effectiveScale; 
+    const diagLen = Math.max(12 * effectiveScale, globalLabelOffset * effectiveScale); 
+    const shelfLen = 80 * effectiveScale;
     const showText = globalScale > 0.4;
-    const fontSizeMain = 9 * globalScale;
-    const fontSizeLarge = 11 * globalScale;
+    const fontSizeMain = Math.min(16, 9 * globalScale);
+    const fontSizeLarge = Math.min(24, 11 * globalScale);
     const strokeColor = isSelected ? '#3b82f6' : '#7c3aed';
 
     const renderShelf = (angleDeg: number, contents: React.ReactNode, type: 'hid' | 'mec') => {
@@ -460,7 +476,7 @@ export const NetworkPump: React.FC<NetworkNodeProps> = ({
         
         return (
             <g>
-                <polyline points={`${x1},${y1} ${x2},${y2} ${x3},${y2}`} fill="none" stroke={type === 'mec' ? '#7c3aed' : '#dc2626'} strokeWidth={1 * globalScale} opacity={0.8} />
+                <polyline points={`${x1},${y1} ${x2},${y2} ${x3},${y2}`} fill="none" stroke={type === 'mec' ? '#7c3aed' : '#dc2626'} strokeWidth={1 * effectiveScale} opacity={0.8} />
                 <g transform={`translate(${shelfMidX}, ${y2})`}>
                     {contents}
                 </g>
@@ -493,46 +509,46 @@ export const NetworkPump: React.FC<NetworkNodeProps> = ({
                     {/* BLOCO 2: Hidráulica (Seguindo labelPosition) */}
                     {renderShelf(angle2, (
                         <g>
-                            <text y={-24 * globalScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#7c3aed" fontWeight="black" style={{textShadow: '0 0 2px white'}}>CPj={cpjVal.toFixed(2)}</text>
-                            <text y={-14 * globalScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#0891b2" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Pj={pjVal.toFixed(2)}</text>
-                            <text y={-4 * globalScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#475569" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Pm={pmVal.toFixed(2)}</text>
-                            <text y={10 * globalScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#64748b" fontWeight="black" style={{textShadow: '0 0 2px white'}}>CT={ctVal.toFixed(2)}</text>
+                            <text y={-24 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#7c3aed" fontWeight="black" style={{textShadow: '0 0 2px white'}}>CPj={cpjVal.toFixed(2)}</text>
+                            <text y={-14 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#0891b2" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Pj={pjVal.toFixed(2)}</text>
+                            <text y={-4 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#475569" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Pm={pmVal.toFixed(2)}</text>
+                            <text y={10 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#64748b" fontWeight="black" style={{textShadow: '0 0 2px white'}}>CT={ctVal.toFixed(2)}</text>
                         </g>
                     ), 'hid')}
 
                     {/* BLOCO 1: Performance (Oposto) */}
                     {renderShelf(angle1, (
                         <g>
-                            <text y={-14 * globalScale} textAnchor="middle" fontSize={fontSizeLarge} fontFamily="monospace" fill="#7c3aed" fontWeight="black" style={{textShadow: '0 0 2px white'}}>H={hVal.toFixed(2)}m</text>
-                            <text y={10 * globalScale} textAnchor="middle" fontSize={fontSizeLarge} fontFamily="monospace" fill="#16a34a" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Q={qVal.toFixed(2)}</text>
+                            <text y={-14 * effectiveScale} textAnchor="middle" fontSize={fontSizeLarge} fontFamily="monospace" fill="#7c3aed" fontWeight="black" style={{textShadow: '0 0 2px white'}}>H={hVal.toFixed(2)}m</text>
+                            <text y={10 * effectiveScale} textAnchor="middle" fontSize={fontSizeLarge} fontFamily="monospace" fill="#16a34a" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Q={qVal.toFixed(2)}</text>
                         </g>
                     ), 'mec')}
                 </>
             )}
 
             <g transform={`rotate(${pumpRotation})`}>
-                <circle r={r} fill="white" stroke={strokeColor} strokeWidth={(isSelected ? 2 : 1) * globalScale} />
+                <circle r={r} fill="white" stroke={strokeColor} strokeWidth={(isSelected ? 2 : 1) * effectiveScale} />
                 
                 <g transform="translate(0, 0)">
-                    <line x1={-r * 0.4} y1={0} x2={r * 0.6} y2={0} stroke={strokeColor} strokeWidth={1 * globalScale} />
-                    <polyline points={`${r*0.3},${-r*0.2} ${r*0.6},0 ${r*0.3},${r*0.2}`} fill="none" stroke={strokeColor} strokeWidth={1 * globalScale} strokeLinecap="round" strokeLinejoin="round" />
+                    <line x1={-r * 0.4} y1={0} x2={r * 0.6} y2={0} stroke={strokeColor} strokeWidth={1 * effectiveScale} />
+                    <polyline points={`${r*0.3},${-r*0.2} ${r*0.6},0 ${r*0.3},${r*0.2}`} fill="none" stroke={strokeColor} strokeWidth={1 * effectiveScale} strokeLinecap="round" strokeLinejoin="round" />
                 </g>
 
-                <rect x={-r * 0.8} y={-r * 0.4} width={r * 0.6} height={r * 0.8} fill="white" stroke={strokeColor} strokeWidth={(isSelected ? 2 : 1) * globalScale} rx={1} />
-                <line x1={-r * 0.65} y1={-r * 0.2} x2={-r * 0.35} y2={-r * 0.2} stroke={strokeColor} strokeWidth={0.5 * globalScale} />
-                <line x1={-r * 0.65} y1={0} x2={-r * 0.35} y2={0} stroke={strokeColor} strokeWidth={0.5 * globalScale} />
-                <line x1={-r * 0.65} y1={r * 0.2} x2={-r * 0.35} y2={r * 0.2} stroke={strokeColor} strokeWidth={0.5 * globalScale} />
+                <rect x={-r * 0.8} y={-r * 0.4} width={r * 0.6} height={r * 0.8} fill="white" stroke={strokeColor} strokeWidth={(isSelected ? 2 : 1) * effectiveScale} rx={1} />
+                <line x1={-r * 0.65} y1={-r * 0.2} x2={-r * 0.35} y2={-r * 0.2} stroke={strokeColor} strokeWidth={0.5 * effectiveScale} />
+                <line x1={-r * 0.65} y1={0} x2={-r * 0.35} y2={0} stroke={strokeColor} strokeWidth={0.5 * effectiveScale} />
+                <line x1={-r * 0.65} y1={r * 0.2} x2={-r * 0.35} y2={r * 0.2} stroke={strokeColor} strokeWidth={0.5 * effectiveScale} />
 
                 {globalScale > 0.6 && (
                     <g transform={`rotate(${-pumpRotation})`}>
-                         <text x={-r * 1.6} y={0} textAnchor="middle" fontSize={9 * globalScale} fontWeight="black" fill={strokeColor} dominantBaseline="middle" style={{textShadow: '0 0 2px white'}}>M</text>
-                         <text x={r * 1.6} y={0} textAnchor="middle" fontSize={9 * globalScale} fontWeight="black" fill={strokeColor} dominantBaseline="middle" style={{textShadow: '0 0 2px white'}}>J</text>
+                         <text x={-r * 1.6} y={0} textAnchor="middle" fontSize={9 * effectiveScale} fontWeight="black" fill={strokeColor} dominantBaseline="middle" style={{textShadow: '0 0 2px white'}}>M</text>
+                         <text x={r * 1.6} y={0} textAnchor="middle" fontSize={9 * effectiveScale} fontWeight="black" fill={strokeColor} dominantBaseline="middle" style={{textShadow: '0 0 2px white'}}>J</text>
                     </g>
                 )}
             </g>
             
             {showText && (
-                <text x={0} y={-40 * globalScale} textAnchor="middle" fontSize={10 * globalScale} fontWeight="black" fill={strokeColor} className="select-none font-sans uppercase tracking-tight" style={{textShadow: '0 0 3px white'}}>{node.name}</text>
+                <text x={0} y={-40 * effectiveScale} textAnchor="middle" fontSize={Math.min(24, 10 * globalScale)} fontWeight="black" fill={strokeColor} className="select-none font-sans uppercase tracking-tight" style={{textShadow: '0 0 3px white'}}>{node.name}</text>
             )}
         </g>
     );

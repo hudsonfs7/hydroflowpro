@@ -10,6 +10,10 @@ interface ProjectManagerModalProps {
     onCreateNew: () => void;
     currentUser: User | null;
     refreshKey?: number;
+    userOrgName?: string;
+    onOpenFinance?: () => void;
+    onOpenAdmin?: () => void;
+    onEditMetadata?: (proj: any) => void;
 }
 
 export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
@@ -17,7 +21,11 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
     onOpenProject,
     onCreateNew,
     currentUser,
-    refreshKey = 0
+    refreshKey = 0,
+    userOrgName = "",
+    onOpenFinance,
+    onOpenAdmin,
+    onEditMetadata
 }) => {
     const [projects, setProjects] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -73,6 +81,25 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
                         />
                         <div className="w-[1px] h-8 bg-slate-700 mx-2"></div>
                         <RibbonButton icon={<PlusIcon />} label="Criar Projeto" onClick={onCreateNew} />
+                        <div className="w-[1px] h-8 bg-slate-700 mx-2"></div>
+                        <RibbonButton
+                            icon={<MapIcon />}
+                            label="Editar Capa"
+                            disabled={!selectedProject}
+                            onClick={() => selectedProject && onEditMetadata?.(selectedProject)}
+                        />
+                        {currentUser?.role === 'master' && onOpenAdmin && (
+                            <>
+                                <div className="w-[1px] h-8 bg-slate-700 mx-2"></div>
+                                <RibbonButton icon={<PlusIcon />} label="Usuários" onClick={onOpenAdmin} />
+                            </>
+                        )}
+                        {onOpenFinance && (
+                            <>
+                                <div className="w-[1px] h-8 bg-slate-700 mx-2"></div>
+                                <RibbonButton icon={<SearchIcon />} label="Financeiro" onClick={onOpenFinance} />
+                            </>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-4">

@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
-  UnitSystem, CalcMethod, FrictionMethod, Node, PipeSegment, CalculationResult, FlowUnit, SolverType, LabelPosition, VisualizationSettings, Vertex, GeoPosition, MapAnnotation, AnnotationType, LabelMode, NodeType, MDConfig, ProjectMetadata, User, MapStyle, CoordinateFormat
+  UnitSystem, CalcMethod, FrictionMethod, Node, PipeSegment, CalculationResult, FlowUnit, SolverType, LabelPosition, VisualizationSettings, Vertex, GeoPosition, MapAnnotation, AnnotationType, LabelMode, NodeType, MDConfig, ProjectMetadata, User, MapStyle, CoordinateFormat, Material, EVTEConfig
 } from './types';
-import { solveNetwork, convertFlowFromSI, convertFlowToSI, calculateGeoDistance, getPumpOrientations } from './services/calcService';
+import { solveNetwork, convertFlowFromSI, convertFlowToSI, calculateGeoDistance, getPumpOrientations, getTopologyLevels } from './services/calcService';
 import { ErrorBoundary, useClickOutside, ModalContainer, SmartNumberInput, InputGroup } from './components/CommonUI';
 import { MapControls } from './components/MapControls';
 import { DrawControls } from './components/DrawControls'; 
@@ -72,8 +72,8 @@ const createCachedTileLayer = (url: string, options: L.LayerOptions) => {
 
 export default function App() {
   const {
-      nodes, pipes, materials, demandGroups, annotations, annotationGroups, mdConfig, projectMetadata,
-      setNodes, setPipes, setMaterials, setDemandGroups, setAnnotations, setAnnotationGroups, setMdConfig, setProjectMetadata,
+      nodes, pipes, materials, demandGroups, annotations, annotationGroups, mdConfig, evteConfig, projectMetadata,
+      setNodes, setPipes, setMaterials, setDemandGroups, setAnnotations, setAnnotationGroups, setMdConfig, setEvteConfig, setProjectMetadata,
       addNode, updateNode, removeNode,
       addPipe, updatePipe, removePipe,
       addDemandGroup, updateDemandGroup, removeDemandGroup,
@@ -146,6 +146,7 @@ export default function App() {
       pipes: PipeSegment[],
       results: CalculationResult[],
       nodeResults: any[],
+      materials: Material[],
       timestamp: number
   } | null>(null);
 
@@ -250,10 +251,10 @@ export default function App() {
   }, []);
 
   const nodeResultsDisplay = useMemo(() => {
-      const map = new Map<string, { cp: number, p: number }>();
+      const map = new Map<string, { head: number, pressure: number }>();
       if (snapshot && snapshot.nodeResults) {
           snapshot.nodeResults.forEach((nr: any) => {
-              map.set(nr.nodeId, { cp: nr.head, p: nr.pressure });
+              map.set(nr.nodeId, { head: nr.head, pressure: nr.pressure });
           });
       }
       return map;
@@ -296,7 +297,8 @@ export default function App() {
     if (visSettings.mode === 'fixed' || !isMapMode) return visSettings.baseScale;
     const referenceZoom = 17;
     const scaleFactor = Math.pow(2, currentZoom - referenceZoom);
-    return visSettings.baseScale * scaleFactor;
+    const rawScale = visSettings.baseScale * scaleFactor;
+    return Math.min(10, Math.max(0.1, rawScale)); // Strict clamping between 0.1x and 10x
   }, [visSettings, currentZoom, isMapMode]);
 
   const handleApplyGlobalParameters = () => {
@@ -322,6 +324,17 @@ export default function App() {
     setCalcError(null); 
     const sources = nodes.filter(n => n.type === 'source' || n.type === 'well'); 
     if (sources.length === 0) { showValidationToast("Defina uma Fonte (Reservatório ou Poço)."); return; }
+
+    // --- STRICT PRE-CALCULATION CONNECTIVITY VALIDATION ---
+    const levels = getTopologyLevels(nodes, pipes);
+    const disconnectedNodes = nodes.filter(n => !levels.has(n.id) && n.type !== 'source' && n.type !== 'well');
+    
+    if (disconnectedNodes.length > 0) {
+        const names = disconnectedNodes.slice(0, 5).map(n => n.name || n.id).join(', ');
+        alert(`ERRO DE CONECTIVIDADE: ${disconnectedNodes.length} trechos/nós estão sem acesso à fonte de água (Ex: ${names}). Corrija o traçado da rede antes de calcular.`);
+        return;
+    }
+
     const pumps = nodes.filter(n => n.type === 'pump');
     for (const p of pumps) {
         const cfg = p.cmbConfig;
@@ -344,7 +357,15 @@ export default function App() {
         const { pipes: calculatedPipes, nodes: calculatedNodes } = solveNetwork(
             nodes, pipes, materials, calcMethod, frictionMethod, unitSystem, flowUnit, 20, gRough, gC, solverType
         );
-        setSnapshot({ nodes: JSON.parse(JSON.stringify(nodes)), pipes: JSON.parse(JSON.stringify(pipes)), results: calculatedPipes, nodeResults: calculatedNodes, timestamp: Date.now() });
+
+        setSnapshot({ 
+          nodes: JSON.parse(JSON.stringify(nodes)), 
+          pipes: JSON.parse(JSON.stringify(pipes)), 
+          results: calculatedPipes, 
+          nodeResults: calculatedNodes, 
+          materials: JSON.parse(JSON.stringify(materials)),
+          timestamp: Date.now() 
+        });
         setShowSidebar(true); setSidebarMode('results');
     } catch (err: any) {
         setCalcError(err.message || "Erro inesperado no cálculo.");
@@ -545,11 +566,30 @@ export default function App() {
   const updateScreenPositions = useCallback(() => {
       if (!mapInstance) return;
       try {
-        setNodes(prevNodes => prevNodes.map(node => { if (!node || !node.geoPosition) return node; const point = mapInstance.latLngToContainerPoint([node.geoPosition.lat, node.geoPosition.lng]); return { ...node, x: point.x, y: point.y }; }));
-        setPipes(prevPipes => prevPipes.map(pipe => { if (!pipe.vertices || pipe.vertices.length === 0) return pipe; const newVertices = pipe.vertices.map(v => { const point = mapInstance.latLngToContainerPoint([v.geoPosition.lat, v.geoPosition.lng]); return { ...v, x: point.x, y: point.y }; }); return { ...pipe, vertices: newVertices }; }));
-        setDrawBufferVertices(prev => prev.map(v => { const point = mapInstance.latLngToContainerPoint([v.geoPosition.lat, v.geoPosition.lng]); return { ...v, x: point.x, y: point.y }; }));
+        setNodes(prevNodes => {
+            const upNodes = prevNodes.map(node => {
+                if (!node || !node.geoPosition) return node;
+                const point = mapInstance.latLngToContainerPoint([node.geoPosition.lat, node.geoPosition.lng]);
+                return { ...node, x: point.x, y: point.y };
+            });
+            
+            setPipes(prevPipes => prevPipes.map(pipe => {
+                const newVertices = (pipe.vertices || []).map(v => {
+                    const pt = mapInstance.latLngToContainerPoint([v.geoPosition.lat, v.geoPosition.lng]);
+                    return { ...v, x: pt.x, y: pt.y };
+                });
+                return { ...pipe, vertices: newVertices };
+            }));
+
+            return upNodes;
+        });
+
+        setDrawBufferVertices(prev => prev.map(v => {
+            const pt = mapInstance.latLngToContainerPoint([v.geoPosition.lat, v.geoPosition.lng]);
+            return { ...v, x: pt.x, y: pt.y };
+        }));
       } catch (err) {}
-  }, [mapInstance, setNodes, setPipes]); 
+  }, [mapInstance, setNodes, setPipes, setDrawBufferVertices]);
 
   useEffect(() => {
       if (!mapInstance) return;
@@ -793,6 +833,7 @@ export default function App() {
             visSettings={visSettings} setVisSettings={setVisSettings}
             onApplyGlobal={handleApplyGlobalParameters}
             mdConfig={mdConfig} setMdConfig={setMdConfig}
+            evteConfig={evteConfig} setEvteConfig={setEvteConfig}
             projectData={snapshot}
           />
         );
@@ -841,8 +882,8 @@ export default function App() {
             });
             
             actualFlow = Q_recalque;
-            const hMontante = suctionRes?.cp || pumpNode.elevation;
-            const hJusante = res?.cp || pumpNode.elevation;
+            const hMontante = suctionRes?.head || pumpNode.elevation;
+            const hJusante = res?.head || pumpNode.elevation;
             actualHead = Math.max(0, hJusante - hMontante);
         }
 
@@ -1083,8 +1124,8 @@ export default function App() {
                       const suctionRes = suctionId ? nodeResultsDisplay.get(suctionId) : undefined;
                       let Q_recalque = 0;
                       if (snapshot) { pipes.filter(p => (p.startNodeId === node.id || p.endNodeId === node.id) && (p.startNodeId !== suctionId && p.endNodeId !== suctionId)).forEach(p => { const pr = snapshot.results.find(r => r.segmentId === p.id); if(pr) Q_recalque += Math.abs(convertFlowFromSI(pr.flowRate, flowUnit)); }); }
-                      const hMontante = suctionRes?.cp || node.elevation; const hJusante = res?.cp || node.elevation;
-                      const pumpExtra = { H: snapshot ? Math.max(0, hJusante - hMontante) : 0, Q: Q_recalque, Pm: suctionRes?.p || 0 };
+                      const hMontante = suctionRes?.head || node.elevation; const hJusante = res?.head || node.elevation;
+                      const pumpExtra = { H: snapshot ? Math.max(0, hJusante - hMontante) : 0, Q: Q_recalque, Pm: suctionRes?.pressure || 0 };
                       return <NetworkPump key={node.id} node={node} isSelected={selectedNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} suctionNodeId={suctionId} nodesContext={nodes} pumpExtraData={pumpExtra} handlers={hnd} />;
                   }
                   return <NetworkJunction key={node.id} node={node} isSelected={selectedNodeId === node.id} isDrawStart={drawStartNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} reportMode={visSettings.reportMode} handlers={hnd} />;

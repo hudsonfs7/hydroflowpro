@@ -147,7 +147,12 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ onClose }) =
                 await updateUser(editingId, userData);
             } else {
                 if (!password) throw new Error("Senha é obrigatória para novos usuários.");
-                await addUser({ ...userData, role: 'user', password });
+                await addUser({ 
+                    username, 
+                    organizationId: selectedOrgId, 
+                    role: 'user', 
+                    password 
+                } as any);
             }
             await fetchData();
             setView('list_users');

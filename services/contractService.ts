@@ -1,5 +1,4 @@
-
-import { ProjectMetadata, ContractData, ContractClause, BudgetData } from '../types';
+import { ProjectMetadata, ContractData, ContractClause, BudgetData, Organization } from '../types';
 
 const ordinal = (n: number) => {
     const s = ["PRIMEIRA", "SEGUNDA", "TERCEIRA", "QUARTA", "QUINTA", "SEXTA", "SÉTIMA", "OITAVA", "NONA", "DÉCIMA", "DÉCIMA PRIMEIRA", "DÉCIMA SEGUNDA"];

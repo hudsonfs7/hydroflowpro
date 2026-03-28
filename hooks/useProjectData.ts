@@ -84,24 +84,24 @@ export const useProjectData = () => {
   const removeNode = useCallback((nodeId: string) => {
      setNodes(prev => prev.filter(n => n.id !== nodeId));
      
-     let nextPipes: PipeSegment[] = [];
-     let nextGroups: DemandGroup[] = [];
-     
-     setPipes(prev => {
-         const remaining = prev.filter(p => p.startNodeId !== nodeId && p.endNodeId !== nodeId);
-         nextPipes = remaining;
-         return remaining; // We'll recalculate demands after updating groups
+     setPipes(currentPipes => {
+         const remainingPipes = currentPipes.filter(p => p.startNodeId !== nodeId && p.endNodeId !== nodeId);
+         
+         setDemandGroups(currentGroups => {
+             const updatedGroups = currentGroups.map(g => ({ 
+                 ...g, 
+                 pipeIds: g.pipeIds.filter(pid => remainingPipes.some(rp => rp.id === pid)) 
+             }));
+             
+             // Update pipes again with recalculated demands using the filtered pipes
+             setPipes(() => recalculateDemands(remainingPipes, updatedGroups));
+             
+             return updatedGroups;
+         });
+         
+         return remainingPipes;
      });
-     
-     setDemandGroups(prevGroups => {
-         const updatedGroups = prevGroups.map(g => ({ ...g, pipeIds: g.pipeIds.filter(pid => nextPipes.some(rp => rp.id === pid)) }));
-         nextGroups = updatedGroups;
-         return updatedGroups;
-     });
-     
-     // Now update pipes with recalculated demands
-     setPipes(prev => recalculateDemands(prev, nextGroups));
-  }, []);
+  }, [recalculateDemands]);
 
   const addPipe = useCallback((pipe: PipeSegment) => {
       setPipes(prev => {
@@ -123,23 +123,20 @@ export const useProjectData = () => {
   }, [nodes, demandGroups, recalculatePipeLengths]);
 
   const removePipe = useCallback((pipeId: string) => {
-     let nextPipes: PipeSegment[] = [];
-     let nextGroups: DemandGroup[] = [];
-     
-     setPipes(prev => {
-         const remaining = prev.filter(p => p.id !== pipeId);
-         nextPipes = remaining;
-         return remaining;
-     });
-     
      setDemandGroups(prevGroups => {
-         const updatedGroups = prevGroups.map(g => ({ ...g, pipeIds: g.pipeIds.filter(id => id !== pipeId) }));
-         nextGroups = updatedGroups;
+         const updatedGroups = prevGroups.map(g => ({ 
+             ...g, 
+             pipeIds: g.pipeIds.filter(id => id !== pipeId) 
+         }));
+         
+         setPipes(prevPipes => {
+             const remaining = prevPipes.filter(p => p.id !== pipeId);
+             return recalculateDemands(remaining, updatedGroups);
+         });
+         
          return updatedGroups;
      });
-     
-     setPipes(prev => recalculateDemands(prev, nextGroups));
-  }, []);
+  }, [recalculateDemands]);
 
   const addDemandGroup = () => {
       const newGroup: DemandGroup = { id: `dg-${Date.now()}`, name: `Setor ${demandGroups.length + 1}`, totalFlow: 0, pipeIds: [] };

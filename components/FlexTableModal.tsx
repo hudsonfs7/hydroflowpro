@@ -1,6 +1,5 @@
 
-import React, { useState } from 'react';
-import { Node, PipeSegment, Material, UnitSystem, CalculationResult, NodeResult } from '../types';
+import React, { useState } from 'react';import { Node, PipeSegment, Material, UnitSystem, CalculationResult, NodeResult, FlowUnit } from '../types';
 import { ModalContainer } from './CommonUI';
 import { TableIcon, CloseIcon } from './Icons';
 import { convertFlowFromSI } from '../services/calcService';
@@ -12,7 +11,7 @@ interface FlexTableModalProps {
     results: CalculationResult[];
     nodeResults?: NodeResult[];
     materials: Material[];
-    flowUnit: string;
+    flowUnit: FlowUnit;
     unitSystem: UnitSystem;
     calcMethod: string;
 }

@@ -103,7 +103,7 @@ export const ResultsContent = (props: any) => {
         if (nodeResults instanceof Map) headMap = nodeResults;
         else if (Array.isArray(nodeResults)) {
             headMap = new Map();
-            nodeResults.forEach((nr: any) => headMap.set(nr.nodeId, { cp: nr.head, p: nr.pressure }));
+            nodeResults.forEach((nr: any) => headMap.set(nr.nodeId, { head: nr.head, p: nr.pressure }));
         } else return [];
 
         const startNode = nodes.find((n:any) => n.type === 'source' || n.type === 'well');
@@ -112,29 +112,34 @@ export const ResultsContent = (props: any) => {
         const path: any[] = [];
         let currentId = startNode.id;
         let cumulativeDist = 0;
-        let currentHGL = startNode.elevation + (startNode.pressureHead || 0);
-        const startRes = headMap.get(currentId);
-        if(startRes) currentHGL = startRes.cp !== undefined ? startRes.cp : (startRes.head || currentHGL);
-
-        path.push({ dist: 0, elevation: startNode.elevation, hgl: currentHGL });
+        
+        const firstRes = headMap.get(currentId);
+        const firstHGL = firstRes ? firstRes.head : startNode.elevation;
+        path.push({ dist: 0, elevation: startNode.elevation, hgl: firstHGL });
 
         const usedPipes = new Set();
         let safety = 0;
-        while(currentId && safety < 500) {
-            const nextPipe = pipes.find((p:any) => p.startNodeId === currentId && !usedPipes.has(p.id));
+        
+        // Find the longest path to give a comprehensive profile
+        while(currentId && safety < 1000) {
+            // Check both directions for next pipe
+            const nextPipe = pipes.find((p:any) => !usedPipes.has(p.id) && (p.startNodeId === currentId || p.endNodeId === currentId));
             if(!nextPipe) break;
+            
             usedPipes.add(nextPipe.id);
-            const endNode = nodes.find((n:any) => n.id === nextPipe.endNodeId);
-            const endRes = headMap.get(nextPipe.endNodeId);
-            const pipeRes = results.find((r:any) => r.segmentId === nextPipe.id);
-            if(endNode && endRes && pipeRes) {
+            const nextNodeId = nextPipe.startNodeId === currentId ? nextPipe.endNodeId : nextPipe.startNodeId;
+            const endNode = nodes.find((n:any) => n.id === nextNodeId);
+            const endRes = headMap.get(nextNodeId);
+            
+            if(endNode && endRes) {
                 cumulativeDist = parseFloat((cumulativeDist + nextPipe.length).toFixed(2));
-                if (endNode.type === 'pump') {
-                    const prevPoint = path[path.length - 1];
-                    path.push({ dist: cumulativeDist, elevation: endNode.elevation, hgl: prevPoint.hgl - pipeRes.totalHeadLoss });
-                }
-                path.push({ dist: cumulativeDist, elevation: endNode.elevation, hgl: endRes.cp !== undefined ? endRes.cp : (endRes.head || endNode.elevation) });
-                currentId = endNode.id;
+                path.push({ 
+                    dist: cumulativeDist, 
+                    elevation: endNode.elevation, 
+                    hgl: endRes.head,
+                    pressure: endRes.p
+                });
+                currentId = nextNodeId;
             } else break;
             safety++;
         }
@@ -257,21 +262,70 @@ export const ResultsContent = (props: any) => {
                  </div>
              </div>
 
-             <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-                 <h4 className="text-[10px] font-semibold text-slate-400 uppercase mb-4 text-center tracking-widest">Perfil Longitudinal</h4>
-                 <div className="h-40 w-full">
+             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm overflow-hidden">
+                 <div className="flex justify-between items-center mb-6">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Perfil Longitudinal</h4>
+                    <div className="flex gap-4">
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm shadow-blue-200"></div><span className="text-[10px] font-bold text-slate-500 uppercase">Piezométrica</span></div>
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-slate-200 shadow-sm shadow-slate-100"></div><span className="text-[10px] font-bold text-slate-500 uppercase">Terreno</span></div>
+                    </div>
+                 </div>
+                 
+                 <div className="h-56 w-full translate-x-1">
                     {graphData.length > 1 ? (
                         <ResponsiveContainer width="100%" height="100%">
-                            <ComposedChart data={graphData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                            <ComposedChart data={graphData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                                <defs>
+                                    <linearGradient id="colorElevation" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#f1f5f9" stopOpacity={0.8}/>
+                                        <stop offset="95%" stopColor="#f8fafc" stopOpacity={0.1}/>
+                                    </linearGradient>
+                                    <linearGradient id="colorHgl" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                    </linearGradient>
+                                </defs>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="dist" type="number" tick={{fontSize: 9, fill: '#94a3b8'}} stroke="#cbd5e1" tickLine={false} axisLine={false} domain={['dataMin', 'dataMax']} />
-                                <YAxis tick={{fontSize: 9, fill: '#94a3b8'}} stroke="#cbd5e1" tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                                <Tooltip contentStyle={{fontSize: '11px', borderRadius: '4px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}} formatter={(value: any) => typeof value === 'number' ? value.toFixed(2) : '-'} />
-                                <Area type="monotone" dataKey="elevation" stroke="#cbd5e1" fill="#f8fafc" fillOpacity={1} name="Terreno" />
-                                <Line type="monotone" dataKey="hgl" stroke="#3b82f6" strokeWidth={2.5} dot={false} name="Piezométrica" isAnimationActive={false} />
+                                <XAxis 
+                                    dataKey="dist" 
+                                    type="number" 
+                                    tick={{fontSize: 9, fill: '#94a3b8', fontWeight: 600}} 
+                                    stroke="#cbd5e1" 
+                                    tickLine={false} 
+                                    axisLine={false} 
+                                    domain={['dataMin', 'dataMax']}
+                                    label={{ value: 'Distância (m)', position: 'insideBottom', offset: -5, fontSize: 10, fill: '#94a3b8', fontWeight: 700 }}
+                                />
+                                <YAxis 
+                                    tick={{fontSize: 9, fill: '#94a3b8', fontWeight: 600}} 
+                                    stroke="#cbd5e1" 
+                                    tickLine={false} 
+                                    axisLine={false} 
+                                    domain={['auto', 'auto']}
+                                    label={{ value: 'Cota (m)', angle: -90, position: 'insideLeft', offset: 10, fontSize: 10, fill: '#94a3b8', fontWeight: 700 }}
+                                />
+                                <Tooltip 
+                                    contentStyle={{backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', padding: '12px'}} 
+                                    itemStyle={{fontSize: '11px', fontWeight: 700, padding: '2px 0'}}
+                                    labelStyle={{fontSize: '11px', fontWeight: 800, color: '#1e293b', marginBottom: '8px'}}
+                                    formatter={(value: any, name: string) => {
+                                        if (typeof value !== 'number') return '-';
+                                        const unit = " m";
+                                        return [value.toFixed(2) + unit, name === 'hgl' ? 'Cota Piezométrica' : 'Cota Terreno'];
+                                    }} 
+                                    labelFormatter={(label) => `Estaca: ${label}m`}
+                                />
+                                <Area type="monotone" dataKey="elevation" stroke="#94a3b8" strokeWidth={1} fill="url(#colorElevation)" fillOpacity={1} name="elevation" isAnimationActive={false} />
+                                <Area type="monotone" dataKey="hgl" stroke="#3b82f6" strokeWidth={3} fill="url(#colorHgl)" name="hgl" isAnimationActive={false} />
+                                <Line type="monotone" dataKey="hgl" stroke="none" dot={{ r: 3, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }} isAnimationActive={false} />
                             </ComposedChart>
                         </ResponsiveContainer>
-                    ) : <div className="flex items-center justify-center h-full text-[10px] text-slate-300 italic">Gráfico indisponível para esta topologia.</div>}
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-slate-300">
+                             <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-2"><ChartIcon /></div>
+                             <p className="text-[10px] font-bold uppercase tracking-wider italic">Perfil indisponível</p>
+                        </div>
+                    )}
                  </div>
              </div>
 
