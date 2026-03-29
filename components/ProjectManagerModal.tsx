@@ -71,6 +71,33 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
         }
     }, [activeProject]);
 
+    // Cálculos de Vazão para o Quadro de Resumo
+    const summaryFlows = useMemo(() => {
+        if (!metadata) return { pop: 0, qRes: 0, qCom: 0, qInst: 0, qTotal: 0 };
+        const k1 = metadata.useK1 ? 1.2 : 1;
+        const k2 = metadata.useK2 ? 1.5 : 1;
+        const currentK = k1 * k2;
+        const hours = metadata.supplyHours || 24;
+        const seconds = hours * 3600;
+
+        const pop = (metadata.lotsHab || 0) * (metadata.habDomRate || 2.8);
+        const qRes = seconds > 0 ? ((pop * (metadata.perCapita || 120)) / seconds) * currentK : 0;
+        
+        const volCom = (metadata.lotsCom || 0) * (metadata.consumptionCom || 0);
+        const qCom = seconds > 0 ? (volCom / seconds) * currentK : 0;
+
+        const popAtendida = pop * ((metadata.attendanceRate || 100) / 100);
+        const qInst = (seconds > 0 && metadata.lotsInst && metadata.lotsInst > 0) ? ((popAtendida * (metadata.consumptionInst || 0)) / seconds) * currentK : 0;
+
+        return {
+            pop: Math.round(pop),
+            qRes,
+            qCom,
+            qInst,
+            qTotal: qRes + qCom + qInst
+        };
+    }, [metadata]);
+
     // Handlers
     const handleUpdateStatus = async (field: string, value: string) => {
         if (!activeProject || !metadata) return;
@@ -190,11 +217,20 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-6 relative z-10">
-                        <div className="flex flex-col items-end mr-4">
-                            <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Usuário Online</span>
-                            <span className="text-xs font-bold text-white uppercase">{currentUser?.username || 'GUEST'}</span>
+                    <div className="flex items-center gap-4 relative z-10">
+                        <div className="flex flex-col items-end mr-2">
+                            <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none">Usuário Online</span>
+                            <span className="text-xs font-bold text-white uppercase mt-1">{currentUser?.username || 'GUEST'}</span>
                         </div>
+                        
+                        <button 
+                            onClick={() => onEditMetadata?.(activeProject)}
+                            className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-blue-500/20 hover:border-blue-500/50 border border-slate-700 transition-all shadow-lg active:scale-95"
+                            title="Editar Informações do Projeto"
+                        >
+                            <PenToolIcon />
+                        </button>
+
                         <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-red-500/20 hover:border-red-500/50 border border-slate-700 transition-all">
                             <CloseIcon />
                         </button>
@@ -242,14 +278,40 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
                             {/* Grid Duplo de Informações Técnicas */}
                             <div className="grid grid-cols-2 gap-8">
                                 {/* Seção 2: Parâmetros de População e Consumo */}
-                                <TechnicalSection title="Informações de Consumo" icon={<DropIcon />}>
+                                <TechnicalSection 
+                                    title="Informações de Consumo" 
+                                    icon={<DropIcon />}
+                                >
                                     <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                                        <StatItem label="Habitantes/Dom" value={`${metadata?.habDomRate || '---'} hab/dom`} />
-                                        <StatItem label="Consumo Per Capita" value={`${metadata?.perCapita || '---'} L/hab.dia`} />
-                                        <StatItem label="K1 (Maior Dia)" value={metadata?.useK1 ? 'Habilitado' : '---'} />
-                                        <StatItem label="K2 (Maior Hora)" value={metadata?.useK2 ? 'Habilitado' : '---'} />
-                                        <StatItem label="Horas Abastecimento" value={`${metadata?.supplyHours || 24}h`} />
-                                        <StatItem label="Taxa Atendimento" value={`${metadata?.attendanceRate || 100}%`} />
+                                        <StatItem label="Lotes Residenciais" value={`${metadata?.lotsHab || 0} UNID`} />
+                                        <StatItem label="Consumo Per Capita" value={`${metadata?.perCapita || '---'} L/HAB.DIA`} />
+                                        <StatItem label="Taxa Hab/Dom" value={`${metadata?.habDomRate || '2.8'} HAB/DOM`} />
+                                        <StatItem label="População Total" value={`${summaryFlows.pop} HAB`} />
+                                        <StatItem label="Horas Abastecimento" value={`${metadata?.supplyHours || 24}H`} />
+                                        <StatItem 
+                                            label="Coeficientes" 
+                                            value={metadata?.useK1 && metadata?.useK2 ? "K1 E K2" : metadata?.useK1 ? "SOMENTE K1" : metadata?.useK2 ? "SOMENTE K2" : "NENHUM"} 
+                                        />
+                                    </div>
+
+                                    {/* Footer do Quadro: Vazões */}
+                                    <div className="mt-8 pt-6 border-t border-slate-100 grid grid-cols-2 gap-4">
+                                        <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100/50">
+                                            <div className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Q Residencial</div>
+                                            <div className="text-sm font-black text-blue-700">{summaryFlows.qRes.toFixed(2)} <span className="text-[10px] opacity-60 ml-0.5">L/s</span></div>
+                                        </div>
+                                        <div className="p-3 bg-orange-50/50 rounded-xl border border-orange-100/50">
+                                            <div className="text-[8px] font-black text-orange-400 uppercase tracking-widest mb-1">Q Comercial</div>
+                                            <div className="text-sm font-black text-orange-700">{summaryFlows.qCom.toFixed(2)} <span className="text-[10px] opacity-60 ml-0.5">L/s</span></div>
+                                        </div>
+                                        <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100/50">
+                                            <div className="text-[8px] font-black text-purple-400 uppercase tracking-widest mb-1">Q Institucional</div>
+                                            <div className="text-sm font-black text-purple-700">{summaryFlows.qInst.toFixed(2)} <span className="text-[10px] opacity-60 ml-0.5">L/s</span></div>
+                                        </div>
+                                        <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 shadow-lg">
+                                            <div className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Vazão Total</div>
+                                            <div className="text-sm font-black text-white">{summaryFlows.qTotal.toFixed(2)} <span className="text-[10px] opacity-40 ml-0.5 text-blue-400">L/s</span></div>
+                                        </div>
                                     </div>
                                 </TechnicalSection>
 
@@ -521,11 +583,22 @@ const InfoItem = ({ icon, label, value }: any) => (
     </div>
 );
 
-const TechnicalSection = ({ title, icon, children }: any) => (
+const TechnicalSection = ({ title, icon, children, onEdit }: any) => (
     <div className="bg-white rounded-[2rem] p-8 border border-slate-200/60 shadow-sm flex flex-col h-full">
-        <div className="flex items-center gap-3 mb-8 pb-4 border-b border-slate-50">
-            <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center">{icon}</div>
-            <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-900 leading-none mt-1">{title}</h4>
+        <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center">{icon}</div>
+                <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-900 leading-none mt-1">{title}</h4>
+            </div>
+            {onEdit && (
+                <button 
+                    onClick={onEdit}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-all active:scale-90"
+                    title="Editar informações técnicas"
+                >
+                    <PenToolIcon />
+                </button>
+            )}
         </div>
         <div className="flex-1">{children}</div>
     </div>
