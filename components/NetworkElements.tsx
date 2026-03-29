@@ -1,5 +1,5 @@
 import React from 'react';
-import { Node, PipeSegment, Material, UnitSystem, FlowUnit, NodeResult, CalculationResult, LabelPosition } from '../types';
+import { Node, PipeSegment, Material, UnitSystem, FlowUnit, NodeResult, CalculationResult, LabelPosition, GlobalUnitSettings } from '../types';
 import { convertFlowFromSI } from '../services/calcService';
 
 // --- PROPS INTERFACES ---
@@ -15,6 +15,7 @@ interface NetworkPipeProps {
   flowUnit: FlowUnit;
   demandDecimals?: number;
   showDemandValues?: boolean;
+  unitSettings: GlobalUnitSettings;
   globalScale?: number; 
   reportMode?: boolean;
   handlers: {
@@ -32,6 +33,7 @@ interface NetworkNodeProps {
   resultDisplay: { head: number; pressure: number } | undefined;
   globalLabelPos: LabelPosition;
   globalLabelOffset: number;
+  unitSettings: GlobalUnitSettings;
   globalScale?: number;
   reportMode?: boolean;
   suctionNodeId?: string; 
@@ -66,8 +68,13 @@ const getPipeColor = (dn: number, isSelected: boolean): string => {
 // --- COMPONENTS ---
 
 export const NetworkPipe: React.FC<NetworkPipeProps> = ({ 
-  pipe, startNode, endNode, isSelected, material, result, unitSystem, flowUnit, handlers, demandDecimals = 4, showDemandValues = false, globalScale = 1, reportMode = false
+  pipe, startNode, endNode, isSelected, material, result, unitSystem, flowUnit, handlers, demandDecimals = 4, showDemandValues = false, globalScale = 1, reportMode = false, unitSettings
 }) => {
+    const format = (val: number, type: 'meters' | 'pressure' | 'flow') => {
+        if (!unitSettings) return val.toFixed(2);
+        const s = unitSettings[type];
+        return val.toFixed(s.decimals);
+    };
     let pointsStr = `${startNode.x},${startNode.y} `;
     const safeVertices = (pipe.vertices || []).filter(v => v && typeof v.x === 'number' && !isNaN(v.x) && typeof v.y === 'number' && !isNaN(v.y)); 
     if (safeVertices.length > 0) { pointsStr += safeVertices.map(v => `${v.x},${v.y}`).join(' ') + ' '; }
@@ -138,15 +145,15 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
     
     let displayFlow = "0";
     if (showDemandValues && pipe.distributedDemand && pipe.distributedDemand > 0) {
-        displayFlow = pipe.distributedDemand.toFixed(demandDecimals);
+        displayFlow = format(pipe.distributedDemand, 'flow');
     } else if (hasFlow && result) {
-        displayFlow = Math.abs(convertFlowFromSI(result.flowRate, flowUnit)).toFixed(demandDecimals);
+        displayFlow = format(Math.abs(convertFlowFromSI(result.flowRate, flowUnit)), 'flow');
     } else if (pipe.distributedDemand && pipe.distributedDemand > 0) {
-        displayFlow = pipe.distributedDemand.toFixed(demandDecimals);
+        displayFlow = format(pipe.distributedDemand, 'flow');
     }
 
     const showFlowValue = parseFloat(displayFlow) > 1e-6;
-    const lenDisplay = (pipe.length !== undefined && pipe.length !== null) ? pipe.length.toFixed(1) : "0.0";
+    const lenDisplay = (pipe.length !== undefined && pipe.length !== null) ? format(pipe.length, 'meters') : "0";
 
     const pipeColor = getPipeColor(pipe.nominalDiameter, isSelected);
 
@@ -193,8 +200,13 @@ export const NetworkPipe: React.FC<NetworkPipeProps> = ({
 };
 
 export const NetworkJunction: React.FC<NetworkNodeProps> = ({ 
-  node, isSelected, isDrawStart, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1, reportMode = false
+  node, isSelected, isDrawStart, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1, reportMode = false, unitSettings
 }) => {
+    const format = (val: number, type: 'meters' | 'pressure' | 'flow') => {
+        if (!unitSettings) return val.toFixed(2);
+        const s = unitSettings[type];
+        return val.toFixed(s.decimals);
+    };
     // FIX: NodeResult use 'head' and 'pressure', NOT 'cp' and 'p'
     const cpVal = resultDisplay ? resultDisplay.head : (node.elevation + (node.pressureHead || 0));
     const pVal = resultDisplay ? resultDisplay.pressure : (node.pressureHead || 0);
@@ -230,9 +242,9 @@ export const NetworkJunction: React.FC<NetworkNodeProps> = ({
     const flowLabel = showFlow ? `Q=${node.baseDemand}` : null;
     const nodeStrokeWidth = (isSelected ? 2.5 : 1.5) * effectiveScale;
     const connectorWidth = 1 * effectiveScale;
-    const cpDisp = (typeof cpVal === 'number') ? cpVal.toFixed(2) : "0.00";
-    const ctDisp = (typeof ctVal === 'number') ? ctVal.toFixed(2) : "0.00";
-    const pDisp = (typeof pVal === 'number') ? pVal.toFixed(2) : "0.00";
+    const cpDisp = (typeof cpVal === 'number') ? format(cpVal, 'meters') : "0";
+    const ctDisp = (typeof ctVal === 'number') ? format(ctVal, 'meters') : "0";
+    const pDisp = (typeof pVal === 'number') ? format(pVal, 'pressure') : "0";
     const showText = globalScale > 0.4;
     const fontSizeMain = Math.min(18, 10 * globalScale);
     const fontSizeLarge = Math.min(24, (reportMode ? 14 : 11) * globalScale);
@@ -275,8 +287,13 @@ export const NetworkJunction: React.FC<NetworkNodeProps> = ({
 };
 
 export const NetworkReservoir: React.FC<NetworkNodeProps> = ({ 
-  node, isSelected, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1 
+  node, isSelected, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1, unitSettings
 }) => {
+    const format = (val: number, type: 'meters' | 'pressure' | 'flow') => {
+        if (!unitSettings) return val.toFixed(2);
+        const s = unitSettings[type];
+        return val.toFixed(s.decimals);
+    };
     const cpVal = resultDisplay ? resultDisplay.head : (node.elevation + (node.pressureHead || 0));
     const pVal = resultDisplay ? resultDisplay.pressure : (node.pressureHead || 0);
     const ctVal = node.elevation;
@@ -309,9 +326,9 @@ export const NetworkReservoir: React.FC<NetworkNodeProps> = ({
     const strokeColor = isSelected ? '#3b82f6' : '#0ea5e9';
     const nodeStrokeWidth = (isSelected ? 2.5 : 1.5) * effectiveScale;
     const connectorWidth = 1 * effectiveScale;
-    const cpDisp = (typeof cpVal === 'number') ? cpVal.toFixed(2) : "0.00";
-    const ctDisp = (typeof ctVal === 'number') ? ctVal.toFixed(2) : "0.00";
-    const pDisp = (typeof pVal === 'number') ? pVal.toFixed(2) : "0.00";
+    const cpDisp = (typeof cpVal === 'number') ? format(cpVal, 'meters') : "0";
+    const ctDisp = (typeof ctVal === 'number') ? format(ctVal, 'meters') : "0";
+    const pDisp = (typeof pVal === 'number') ? format(pVal, 'pressure') : "0";
     const showText = globalScale > 0.4;
     const fontSizeMain = Math.min(18, 10 * globalScale);
     const fontSizeLarge = Math.min(24, 11 * globalScale);
@@ -348,8 +365,13 @@ export const NetworkReservoir: React.FC<NetworkNodeProps> = ({
 };
 
 export const NetworkWell: React.FC<NetworkNodeProps> = ({ 
-  node, isSelected, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1 
+  node, isSelected, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1, unitSettings
 }) => {
+    const format = (val: number, type: 'meters' | 'pressure' | 'flow') => {
+        if (!unitSettings) return val.toFixed(2);
+        const s = unitSettings[type];
+        return val.toFixed(s.decimals);
+    };
     const ctVal = node.elevation || 0;
     const neVal = node.staticLevel || 0;
     const ndVal = node.dynamicLevel || 0;
@@ -408,16 +430,16 @@ export const NetworkWell: React.FC<NetworkNodeProps> = ({
                 <>
                 <polyline points={`${x1},${y1} ${x2},${y2} ${x3},${y3}`} fill="none" stroke="#ef4444" strokeWidth={connectorWidth} />
                 <g>
-                    <text x={shelfMidX} y={yAboveLine} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#334155" fontWeight="bold">CT={ctVal.toFixed(2)}</text>
-                    <text x={shelfMidX} y={yBelowL1} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#0284c7" fontWeight="bold">NE={neVal.toFixed(2)}</text>
-                    <text x={shelfMidX} y={yBelowL2} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#2563eb" fontWeight="bold">ND={ndVal.toFixed(2)}</text>
+                    <text x={shelfMidX} y={yAboveLine} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#334155" fontWeight="bold">CT={format(ctVal, 'meters')}</text>
+                    <text x={shelfMidX} y={yBelowL1} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#0284c7" fontWeight="bold">NE={format(neVal, 'meters')}</text>
+                    <text x={shelfMidX} y={yBelowL2} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#2563eb" fontWeight="bold">ND={format(ndVal, 'meters')}</text>
                     {pVal !== undefined && (
-                        <text x={pX} y={pY} textAnchor={pAnchor} fontSize={fontSizeLarge} fontFamily="monospace" fontWeight="bold" fill="#dc2626" dominantBaseline="middle">P={pVal.toFixed(2)}</text>
+                        <text x={pX} y={pY} textAnchor={pAnchor} fontSize={fontSizeLarge} fontFamily="monospace" fontWeight="bold" fill="#dc2626" dominantBaseline="middle">P={format(pVal, 'pressure')}</text>
                     )}
                 </g>
                 <g>
                     <text x={0} y={yIconLabel1} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#475569">DN={dnVal.toFixed(0)}mm</text>
-                    <text x={0} y={yIconLabel2} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#16a34a" fontWeight="bold">Q={qVal.toFixed(2)}</text>
+                    <text x={0} y={yIconLabel2} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#16a34a" fontWeight="bold">Q={format(qVal, 'flow')}</text>
                 </g>
                 </>
             )}
@@ -433,8 +455,13 @@ export const NetworkWell: React.FC<NetworkNodeProps> = ({
 };
 
 export const NetworkPump: React.FC<NetworkNodeProps> = ({ 
-  node, isSelected, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1, suctionNodeId, nodesContext = [], pumpExtraData
+  node, isSelected, resultDisplay, globalLabelPos, globalLabelOffset, handlers, globalScale = 1, suctionNodeId, nodesContext = [], pumpExtraData, unitSettings
 }) => {
+    const format = (val: number, type: 'meters' | 'pressure' | 'flow') => {
+        if (!unitSettings) return val.toFixed(2);
+        const s = unitSettings[type];
+        return val.toFixed(s.decimals);
+    };
     const cpjVal = resultDisplay ? resultDisplay.head : node.elevation;
     const pjVal = resultDisplay ? resultDisplay.pressure : 0;
     const ctVal = node.elevation;
@@ -509,18 +536,18 @@ export const NetworkPump: React.FC<NetworkNodeProps> = ({
                     {/* BLOCO 2: Hidráulica (Seguindo labelPosition) */}
                     {renderShelf(angle2, (
                         <g>
-                            <text y={-24 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#7c3aed" fontWeight="black" style={{textShadow: '0 0 2px white'}}>CPj={cpjVal.toFixed(2)}</text>
-                            <text y={-14 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#0891b2" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Pj={pjVal.toFixed(2)}</text>
-                            <text y={-4 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#475569" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Pm={pmVal.toFixed(2)}</text>
-                            <text y={10 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#64748b" fontWeight="black" style={{textShadow: '0 0 2px white'}}>CT={ctVal.toFixed(2)}</text>
+                            <text y={-24 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#7c3aed" fontWeight="black" style={{textShadow: '0 0 2px white'}}>CPj={format(cpjVal, 'meters')}</text>
+                            <text y={-14 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#0891b2" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Pj={format(pjVal, 'pressure')}</text>
+                            <text y={-4 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#475569" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Pm={format(pmVal, 'pressure')}</text>
+                            <text y={10 * effectiveScale} textAnchor="middle" fontSize={fontSizeMain} fontFamily="monospace" fill="#64748b" fontWeight="black" style={{textShadow: '0 0 2px white'}}>CT={format(ctVal, 'meters')}</text>
                         </g>
                     ), 'hid')}
 
                     {/* BLOCO 1: Performance (Oposto) */}
                     {renderShelf(angle1, (
                         <g>
-                            <text y={-14 * effectiveScale} textAnchor="middle" fontSize={fontSizeLarge} fontFamily="monospace" fill="#7c3aed" fontWeight="black" style={{textShadow: '0 0 2px white'}}>H={hVal.toFixed(2)}m</text>
-                            <text y={10 * effectiveScale} textAnchor="middle" fontSize={fontSizeLarge} fontFamily="monospace" fill="#16a34a" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Q={qVal.toFixed(2)}</text>
+                            <text y={-14 * effectiveScale} textAnchor="middle" fontSize={fontSizeLarge} fontFamily="monospace" fill="#7c3aed" fontWeight="black" style={{textShadow: '0 0 2px white'}}>H={format(hVal, 'meters')}m</text>
+                            <text y={10 * effectiveScale} textAnchor="middle" fontSize={fontSizeLarge} fontFamily="monospace" fill="#16a34a" fontWeight="black" style={{textShadow: '0 0 2px white'}}>Q={format(qVal, 'flow')}</text>
                         </g>
                     ), 'mec')}
                 </>

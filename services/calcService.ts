@@ -231,7 +231,11 @@ export const solveNetwork = (
         adjPipes.forEach(p => {
             const otherId = p.startNodeId === nodeId ? p.endNodeId : p.startNodeId;
             if (nodeHeads.has(otherId)) {
-                if (!parentNodeId || (levels.get(otherId)! < levels.get(parentNodeId)!)) {
+                const otherLvl = levels.get(otherId) ?? Infinity;
+                const currentLvl = levels.get(nodeId) ?? Infinity;
+                
+                // Choose the neighbor with the SMALLEST level (closest to source) as parent
+                if (!parentNodeId || (otherLvl < (levels.get(parentNodeId) ?? Infinity))) {
                     parentNodeId = otherId;
                     connectingPipe = p;
                 }
@@ -277,7 +281,7 @@ export const solveNetwork = (
         return {
             segmentId: p.id, flowRate: flow, velocity, reynolds: (velocity * dM) / viscosity,
             frictionFactor: 0, headLossFriction: hl, headLossSingular: 0, totalHeadLoss: hl,
-            pressureDrop: hl, unitHeadLoss: hl / (p.length / 1000), energyLoss: 0,
+            pressureDrop: hl, unitHeadLoss: hl / p.length, energyLoss: 0,
             regime: velocity > 0 ? 'Turbulent' : 'Laminar', methodUsed: method, warnings: [], 
             roughnessUsed: effectiveRoughnessOrC
         };

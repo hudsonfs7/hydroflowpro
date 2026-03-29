@@ -1,4 +1,4 @@
-import { Node, PipeSegment, CalculationResult, NodeResult, UnitSystem, FlowUnit, Material } from '../types';
+import { Node, PipeSegment, CalculationResult, NodeResult, UnitSystem, FlowUnit, Material, GlobalUnitSettings } from '../types';
 import { convertFlowFromSI, getPumpOrientations } from './calcService';
 
 const calculatePowerCV = (flow: number, head: number, unit: FlowUnit, efficiency: number) => {
@@ -197,8 +197,8 @@ const buildSchematicCroquiSvg = (
     </svg>`;
 };
 
-export const generateReportHtml = (projectData: any, options: { autoPrint?: boolean } = {}) => {
-    const { nodes, pipes, results, nodeResults, totals, flowUnit, unitSystem, materials, projectMetadata, calcMethod, mapImage, globalC, globalRoughness } = projectData;
+export const generateReportHtml = (projectData: any, options: any = {}) => {
+    const { nodes, pipes, results, nodeResults, totals, flowUnit, unitSystem, materials, projectMetadata, calcMethod, mapImage, globalC, globalRoughness, unitSettings } = projectData;
     const { autoPrint = true } = options;
     const date = new Date().toLocaleDateString('pt-BR');
 
@@ -221,8 +221,14 @@ export const generateReportHtml = (projectData: any, options: { autoPrint?: bool
         return null;
     };
 
-    const safeFixed = (val: any, digits: number = 2) => {
-        if (typeof val === 'number' && !isNaN(val)) return val.toFixed(digits);
+    const format = (val: number, type: 'meters' | 'pressure' | 'flow') => {
+        if (!unitSettings) return val.toFixed(2);
+        const s = unitSettings[type];
+        return val.toFixed(s.decimals);
+    };
+
+    const safeFixed = (val: any, type: 'meters' | 'pressure' | 'flow') => {
+        if (typeof val === 'number' && !isNaN(val)) return format(val, type);
         return "0.00";
     };
 
@@ -308,8 +314,8 @@ export const generateReportHtml = (projectData: any, options: { autoPrint?: bool
           <td>${mat}</td>
           <td class="text-center font-bold" style="background: #f1f5f9; color: #1e40af;">${dn}</td>
           <td class="text-center">${di}</td>
-          <td class="text-right">${safeFixed(length, 1)}</td>
-          <td class="text-right font-bold text-blue-700">${necM}</td>
+          <td class="text-right">${safeFixed(length, 'meters')}</td>
+          <td class="text-right font-bold text-blue-700">${safeFixed(necM, 'meters')}</td>
           <td class="text-center font-bold text-red-600">${numTubos}</td>
       </tr>`;
     }).join('');
@@ -334,14 +340,14 @@ export const generateReportHtml = (projectData: any, options: { autoPrint?: bool
         return `<tr>
         <td>${p.name || p.id.replace('p', 'T')}</td>
         <td>${p.startNodeId} → ${p.endNodeId}</td>
-        <td class="text-right">${safeFixed(p.length, 1)}</td>
+        <td class="text-right">${safeFixed(p.length, 'meters')}</td>
         <td class="text-right">${p.nominalDiameter}</td>
         <td>${matFull.split(' ')[0]}</td>
         <td class="text-right">${coeffValue}</td>
-        <td class="text-right font-bold">${safeFixed(flowVal)}</td>
-        <td class="text-right">${safeFixed(vel)}</td>
-        <td class="text-right">${safeFixed(hl)}</td>
-        <td class="text-right">${safeFixed(hlUnit)}</td>
+        <td class="text-right font-bold">${safeFixed(flowVal, 'flow')}</td>
+        <td class="text-right">${safeFixed(vel, 'meters')}</td>
+        <td class="text-right">${safeFixed(hl, 'meters')}</td>
+        <td class="text-right">${safeFixed(hlUnit, 'meters')}</td>
       </tr>`;
     }).join('');
 
@@ -363,10 +369,10 @@ export const generateReportHtml = (projectData: any, options: { autoPrint?: bool
         return `<tr>
         <td>${n.id}</td>
         <td>${n.name || '-'}</td>
-        <td class="text-right">${safeFixed(n.elevation)}</td>
-        <td class="text-right">${n.baseDemand || 0}</td>
-        <td class="text-right">${safeFixed(cp)}</td>
-        <td class="text-right font-bold">${safeFixed(p)}</td>
+        <td class="text-right">${safeFixed(n.elevation, 'meters')}</td>
+        <td class="text-right">${safeFixed(n.baseDemand || 0, 'flow')}</td>
+        <td class="text-right">${safeFixed(cp, 'meters')}</td>
+        <td class="text-right font-bold">${safeFixed(p, 'pressure')}</td>
       </tr>`;
     }).join('');
 
@@ -408,26 +414,26 @@ export const generateReportHtml = (projectData: any, options: { autoPrint?: bool
           <tr>
               <td>Perda de Carga - J (m/km)</td>
               <td class="text-center font-bold">10.00</td>
-              <td class="text-center font-bold" style="color: ${maxJ > 10 ? '#dc2626' : '#334155'}">${safeFixed(maxJ)}</td>
+              <td class="text-center font-bold" style="color: ${maxJ > 10 ? '#dc2626' : '#334155'}">${safeFixed(maxJ, 'meters')}</td>
               <td class="text-center font-bold" style="color: ${maxJ <= 10 ? '#16a34a' : '#dc2626'}">${maxJ <= 10 ? 'OK' : 'ALTO'}</td>
           </tr>
           <tr>
               <td>Velocidade (m/s)</td>
               <td class="text-center font-bold">2.00</td>
-              <td class="text-center font-bold" style="color: ${maxVel > 2 ? '#dc2626' : '#334155'}">${safeFixed(maxVel)}</td>
+              <td class="text-center font-bold" style="color: ${maxVel > 2 ? '#dc2626' : '#334155'}">${safeFixed(maxVel, 'meters')}</td>
               <td class="text-center font-bold" style="color: ${maxVel <= 2 ? '#16a34a' : '#dc2626'}">${maxVel <= 2 ? 'OK' : 'ALTO'}</td>
           </tr>
           <tr>
               <td>Cota Piezométrica máxima (m)</td>
-              <td class="text-center font-bold">${safeFixed(maxCotaPiez)}</td>
+              <td class="text-center font-bold">${safeFixed(maxCotaPiez, 'meters')}</td>
               <td>Pressão dinâmica máxima (mca)</td>
-              <td class="text-center font-bold text-blue-800">${safeFixed(maxPress)}</td>
+              <td class="text-center font-bold text-blue-800">${safeFixed(maxPress, 'pressure')}</td>
           </tr>
           <tr>
               <td>Cota Terreno mínima (m)</td>
-              <td class="text-center font-bold">${safeFixed(minElev)}</td>
+              <td class="text-center font-bold">${safeFixed(minElev, 'meters')}</td>
               <td>Pressão dinâmica mínima (mca)</td>
-              <td class="text-center font-bold text-red-600">${safeFixed(minPress)}</td>
+              <td class="text-center font-bold text-red-600">${safeFixed(minPress, 'pressure')}</td>
           </tr>
       </tbody>
   </table>`;
@@ -549,7 +555,7 @@ export const generateReportHtml = (projectData: any, options: { autoPrint?: bool
 
             const fmtQ = (qNum: number) => {
                 const qM3 = flowUnit.toLowerCase() === 'l/s' ? qNum * 3.6 : (flowUnit === 'm³/day' ? qNum / 24 : qNum);
-                return `${safeFixed(qNum)} ${flowUnit} (${safeFixed(qM3)} m³/h)`;
+                return `${safeFixed(qNum, 'flow')} ${flowUnit} (${safeFixed(qM3, 'flow')} m³/h)`;
             };
 
             cmbContent += `
@@ -560,16 +566,16 @@ export const generateReportHtml = (projectData: any, options: { autoPrint?: bool
                       <h3 style="font-size: 11px; color: #64748b; margin-bottom: 5px;">DADOS DE PROJETO</h3>
                       <table style="margin-bottom: 0;">
                           <tr><td>Vazão Projetada</td><td class="text-right font-bold">${fmtQ(config.designFlow)}</td></tr>
-                          <tr><td>AMT Projetada</td><td class="text-right font-bold">${safeFixed(config.designHead)} mca</td></tr>
-                          <tr><td>Rendimento</td><td class="text-right">${safeFixed(config.efficiency)}%</td></tr>
+                          <tr><td>AMT Projetada</td><td class="text-right font-bold">${safeFixed(config.designHead, 'pressure')} mca</td></tr>
+                          <tr><td>Rendimento</td><td class="text-right">${safeFixed(config.efficiency, 'meters')}%</td></tr>
                       </table>
                   </div>
                   <div>
                       <h3 style="font-size: 11px; color: #64748b; margin-bottom: 5px;">DADOS DE OPERAÇÃO</h3>
                       <table style="margin-bottom: 0;">
                           <tr><td>Vazão Efetiva</td><td class="text-right font-bold text-blue-700">${fmtQ(actualFlow)}</td></tr>
-                          <tr><td>AMT Efetiva</td><td class="text-right font-bold text-blue-700">${safeFixed(actualHead)} mca</td></tr>
-                          <tr><td>Potência Estimada</td><td class="text-right font-bold text-red-600">${safeFixed(powerCV)} cv</td></tr>
+                          <tr><td>AMT Efetiva</td><td class="text-right font-bold text-blue-700">${safeFixed(actualHead, 'pressure')} mca</td></tr>
+                          <tr><td>Potência Estimada</td><td class="text-right font-bold text-red-600">${safeFixed(powerCV, 'meters')} cv</td></tr>
                       </table>
                   </div>
               </div>
@@ -588,15 +594,15 @@ export const generateReportHtml = (projectData: any, options: { autoPrint?: bool
                       <text x="12" y="115" text-anchor="middle" font-size="12" fill="#475569" font-weight="bold" transform="rotate(-90 12 115)">AMT (mca)</text>
                       
                       <text x="${mapX(0)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">0</text>
-                      <text x="${mapX(plotMax / 2)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">${safeFixed(plotMax / 2, 1)}</text>
-                      <text x="${mapX(plotMax)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">${safeFixed(plotMax, 1)}</text>
+                      <text x="${mapX(plotMax / 2)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">${safeFixed(plotMax / 2, 'flow')}</text>
+                      <text x="${mapX(plotMax)}" y="228" text-anchor="middle" font-size="10" fill="#64748b">${safeFixed(plotMax, 'flow')}</text>
                       
-                      <text x="32" y="${mapY(maxHeadPlot)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">${safeFixed(maxHeadPlot, 0)}</text>
-                      <text x="32" y="${mapY(maxHeadPlot / 2)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">${safeFixed(maxHeadPlot / 2, 0)}</text>
+                      <text x="32" y="${mapY(maxHeadPlot)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">${safeFixed(maxHeadPlot, 'pressure')}</text>
+                      <text x="32" y="${mapY(maxHeadPlot / 2)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">${safeFixed(maxHeadPlot / 2, 'pressure')}</text>
                       <text x="32" y="${mapY(0)}" text-anchor="end" font-size="10" fill="#64748b" alignment-baseline="middle">0</text>
                   </svg>
                   <div style="font-size: 11px; margin-top: 8px; color: #475569; background: #f8fafc; padding: 5px; border-radius: 4px; display: inline-block;">
-                      <strong>Ponto de Referência (Projeto):</strong> ${fmtQ(config.designFlow)} @ ${safeFixed(config.designHead)} mca
+                      <strong>Ponto de Referência (Projeto):</strong> ${fmtQ(config.designFlow)} @ ${safeFixed(config.designHead, 'pressure')} mca
                   </div>
               </div>
               <div style="background: #fff8f1; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 15px; font-size: 10px; color: #78350f; text-align: left; border-radius: 4px;">

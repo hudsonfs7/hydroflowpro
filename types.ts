@@ -27,9 +27,20 @@ export enum SolverType {
 
 export interface VisualizationSettings {
   mode: 'fixed' | 'adaptive';
+  reportMode?: boolean;
   baseScale: number;
   adaptiveStrength: number;
-  reportMode?: boolean;
+}
+
+export interface UnitSetting {
+  unit: string;
+  decimals: number;
+}
+
+export interface GlobalUnitSettings {
+  meters: UnitSetting;   // Cotas e Extensões (m)
+  pressure: UnitSetting; // Pressão (mca)
+  flow: UnitSetting;     // Vazão (L/s ou m3/h)
 }
 
 // --- AUTH TYPES ---

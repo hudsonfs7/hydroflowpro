@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
-  UnitSystem, CalcMethod, FrictionMethod, Node, PipeSegment, CalculationResult, FlowUnit, SolverType, LabelPosition, VisualizationSettings, Vertex, GeoPosition, MapAnnotation, AnnotationType, LabelMode, NodeType, MDConfig, ProjectMetadata, User, MapStyle, CoordinateFormat, Material, EVTEConfig
+  UnitSystem, CalcMethod, FrictionMethod, Node, PipeSegment, CalculationResult, FlowUnit, SolverType, LabelPosition, VisualizationSettings, Vertex, GeoPosition, MapAnnotation, AnnotationType, LabelMode, NodeType, MDConfig, ProjectMetadata, User, MapStyle, CoordinateFormat, Material, EVTEConfig, GlobalUnitSettings
 } from './types';
 import { solveNetwork, convertFlowFromSI, convertFlowToSI, calculateGeoDistance, getPumpOrientations, getTopologyLevels } from './services/calcService';
 import { ErrorBoundary, useClickOutside, ModalContainer, SmartNumberInput, InputGroup } from './components/CommonUI';
@@ -39,6 +38,8 @@ const ProtocolConsultModal = React.lazy(() => import('./components/ProtocolConsu
 const UserManagerModal = React.lazy(() => import('./components/UserManagerModal').then(m => ({ default: m.UserManagerModal })));
 const BudgetEditorModal = React.lazy(() => import('./components/BudgetEditorModal').then(m => ({ default: m.BudgetEditorModal })));
 const DocumentToolsModal = React.lazy(() => import('./components/DocumentToolsModal').then(m => ({ default: m.DocumentToolsModal })));
+const LongitudinalProfileModal = React.lazy(() => import('./components/LongitudinalProfileModal').then(m => ({ default: m.LongitudinalProfileModal })));
+import { DxfExportModal } from './components/DxfExportModal';
 import { SplashScreen } from './components/SplashScreen';
 
 import { generateDXF } from './services/dxfService'; 
@@ -123,16 +124,24 @@ export default function App() {
   const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
   const [isProjectSelectorOpen, setIsProjectSelectorOpen] = useState(false);
   const [isFinancialManagerOpen, setIsFinancialManagerOpen] = useState(false);
+  const [isLongitudinalModalOpen, setIsLongitudinalModalOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentOrgName, setCurrentOrgName] = useState<string>("");
   const [initialProtocolCode, setInitialProtocolCode] = useState<string>("");
   
+  const [globalUnitSettings, setGlobalUnitSettings] = useState<GlobalUnitSettings>({
+    meters: { unit: 'm', decimals: 2 },
+    pressure: { unit: 'mca', decimals: 2 },
+    flow: { unit: 'l/s', decimals: 2 }
+  });
   // Expose opener globally for simplicity in LoginModal
   (window as any).openProtocolConsult = (code?: string) => {
     if (code) setInitialProtocolCode(code);
     setIsProtocolConsultOpen(true);
   };
+
+  const [isDxfExportOpen, setIsDxfExportOpen] = useState(false);
 
   const [managerRefreshKey, setManagerRefreshKey] = useState(0);
   const [sessionRestored, setSessionRestored] = useState(false);
@@ -147,6 +156,7 @@ export default function App() {
   const activeDragRef = useRef<{ node: string | null, vertex: any, annVertex: any, annLabel: string | null }>({
       node: null, vertex: null, annVertex: null, annLabel: null
   });
+  const lastFitProjectIdRef = useRef<string | null>(null);
 
   const pumpSuctionMap = useMemo(() => {
     return getPumpOrientations(nodes, pipes);
@@ -228,14 +238,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // 2. Invalidate Map Size on Visibility change (Login -> App)
-    if (currentUser && mapInstance) {
-        setTimeout(() => {
-            mapInstance.invalidateSize();
-            console.log("Map size invalidated after login visibility change.");
-        }, 300); // Small delay to ensure DOM is ready
-    }
-  }, [currentUser, mapInstance]);
+    // 2. Sincronização e Ajuste do Mapa (Login -> App / Carregar Projeto)
+    if (!mapInstance) return;
+
+    // Forçar recalculo de tamanho do container
+    setTimeout(() => {
+        mapInstance.invalidateSize();
+        
+        const currentId = projectMetadata?._id || null;
+        const hasElements = nodes.length > 0;
+
+        // Auto-Fit: Apenas se o projeto mudou e tem elementos (evita pulos ao desenhar)
+        if (hasElements && currentId !== lastFitProjectIdRef.current) {
+            lastFitProjectIdRef.current = currentId;
+
+            const points: [number, number][] = nodes.map(n => [n.geoPosition.lat, n.geoPosition.lng]);
+            pipes.forEach(p => {
+                if (p.vertices) p.vertices.forEach(v => points.push([v.geoPosition.lat, v.geoPosition.lng]));
+            });
+
+            if (points.length > 0) {
+                mapInstance.fitBounds(points as any, { 
+                    padding: [60, 60], 
+                    maxZoom: 18, 
+                    animate: true,
+                    duration: 0.8
+                });
+                console.log("Map auto-fitted to project elements.");
+            }
+        }
+    }, 400); // Delay maior para garantir que modais/sidebar terminaram transição
+  }, [currentUser, mapInstance, projectMetadata?._id, nodes.length === 0]); 
 
 
   useEffect(() => {
@@ -705,17 +738,48 @@ export default function App() {
     });
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: any) => {
     if (longPressTimerRef.current) { window.clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     if (mapInstance) mapInstance.dragging.enable();
+    
     if (dragStartRef.current) { 
-      if (Date.now() - dragStartRef.current.time > 300) {
-        if (dragNode) { triggerLengthRecalculation(); const n = nodes.find(nx => nx.id === dragNode); if (n?.autoElevation) fetchElevation(n.geoPosition.lat, n.geoPosition.lng).then(z => { if (z !== null) updateNode(dragNode, { elevation: z }); }); }
-        else if (dragVertex) triggerLengthRecalculation(); 
+      const duration = Date.now() - dragStartRef.current.time;
+      const isTouch = e.type.startsWith('touch');
+      const clientX = isTouch ? (e.changedTouches?.[0]?.clientX || 0) : e.clientX;
+      const clientY = isTouch ? (e.changedTouches?.[0]?.clientY || 0) : e.clientY;
+      const dx = clientX - (dragStartRef.current.pointerX || 0);
+      const dy = clientY - (dragStartRef.current.pointerY || 0);
+      const dist = Math.sqrt(dx*dx + dy*dy);
+
+      // BUG FIX: Piezometrica/Accidental Move Logic
+      // If movement is too fast (click), revert to original position
+      const isQuickClick = duration < 500;
+
+      if (isQuickClick) {
+          // Revert!
+          if (dragNode) {
+              const startPos = dragStartRef.current.geoPosition;
+              setNodes(prev => prev.map(n => n.id === dragNode ? { ...n, geoPosition: { ...startPos } } : n));
+          } else if (dragVertex) {
+              const startPos = dragStartRef.current.geoPosition;
+              setPipes(prev => prev.map(p => {
+                  if (p.id !== dragVertex!.pipeId) return p;
+                  const nv = [...(p.vertices || [])];
+                  nv[dragVertex!.index] = { ...nv[dragVertex!.index], geoPosition: { ...startPos } };
+                  return { ...p, vertices: nv };
+              }));
+          }
+      } else {
+          // Legitimate move
+          if (duration > 300) {
+              if (dragNode) { triggerLengthRecalculation(); const n = nodes.find(nx => nx.id === dragNode); if (n?.autoElevation) fetchElevation(n.geoPosition.lat, n.geoPosition.lng).then(z => { if (z !== null) updateNode(dragNode, { elevation: z }); }); }
+              else if (dragVertex) triggerLengthRecalculation(); 
+          }
       }
     }
     setDragNode(null); setDragVertex(null); setDragAnnVertex(null); setDragAnnLabel(null); dragStartRef.current = null;
+    updateScreenPositions(); // Force sync
   };
 
   const handleImportDxf = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -882,6 +946,8 @@ export default function App() {
             mdConfig={mdConfig} setMdConfig={setMdConfig}
             evteConfig={evteConfig} setEvteConfig={setEvteConfig}
             projectData={snapshot}
+            unitSettings={globalUnitSettings}
+            setUnitSettings={setGlobalUnitSettings}
           />
         );
       case 'QUICK_CALC':
@@ -1123,10 +1189,10 @@ export default function App() {
                             setShowProjectMenu(false); 
                         }} />
                     </label>
-                    <div className="px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 border-y border-slate-100">Exportar</div>
-                    <button onClick={() => { const dxf = generateDXF(nodes, pipes, materials, snapshot?.nodeResults, snapshot?.results, annotations, isMapMode, unitSystem, flowUnit); const blob = new Blob([JSON.stringify(dxf)], { type: 'application/dxf' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `hydroflow-export.dxf`; document.body.appendChild(link); link.click(); document.body.removeChild(link); setShowProjectMenu(false); }} className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700 text-xs text-left w-full transition-colors"><FileCadIcon /> Exportar para CAD (DXF)</button>
-                </div>
-            )}
+                    <div className="px-4 py-1.5 text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 border-y border-slate-100">Exportar</div>
+                    <button onClick={() => { setIsDxfExportOpen(true); setShowProjectMenu(false); }} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-slate-700 text-[11px] font-black uppercase tracking-tighter w-full transition-colors border-b border-slate-50 bg-white"><FileCadIcon /> Exportar para CAD (DXF)</button>
+                 </div>
+             )}
           </div>
 
           <button onClick={() => setShowDemandTool(!showDemandTool)} className={`flex items-center gap-2 px-3 py-1.5 rounded-md font-medium text-xs ${showDemandTool ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}><DropIcon /> <span className="hidden md:inline">Demanda</span></button>
@@ -1190,13 +1256,13 @@ export default function App() {
                {pipes.map(pipe => {
                   const start = nodes.find(n => n?.id === pipe.startNodeId); const end = nodes.find(n => n?.id === pipe.endNodeId);
                   if(!start || !end) return null;
-                  return <NetworkPipe key={pipe.id} pipe={pipe} startNode={start} endNode={end} isSelected={selectedPipeId === pipe.id || demandSelection.has(pipe.id)} material={materials.find(m => m.id === pipe.materialId)} result={snapshot?.results.find(r => r.segmentId === pipe.id)} unitSystem={unitSystem} flowUnit={flowUnit} demandDecimals={demandDecimals} showDemandValues={showDemandTool} globalScale={computedScale} reportMode={visSettings.reportMode} handlers={{ onClick: (e, id) => { e.stopPropagation(); setSelectedPipeId(id); setSelectedNodeId(null); setSelectedAnnotationId(null); }, onDoubleClick: (e, id) => { e.stopPropagation(); openProperties('pipe', id); }, onPipeMouseDown: (e, id) => handlePointerDown(e, 'pipe', id), onVertexMouseDown: (e, pid, idx) => { e.stopPropagation(); setDragVertex({ pipeId: pid, index: idx }); } }} />;
+                  return <NetworkPipe key={pipe.id} pipe={pipe} startNode={start} endNode={end} isSelected={selectedPipeId === pipe.id || demandSelection.has(pipe.id)} material={materials.find(m => m.id === pipe.materialId)} result={snapshot?.results.find(r => r.segmentId === pipe.id)} unitSystem={unitSystem} flowUnit={flowUnit} demandDecimals={demandDecimals} showDemandValues={showDemandTool} globalScale={computedScale} reportMode={visSettings.reportMode} handlers={{ onClick: (e, id) => { e.stopPropagation(); setSelectedPipeId(id); setSelectedNodeId(null); setSelectedAnnotationId(null); }, onDoubleClick: (e, id) => { e.stopPropagation(); openProperties('pipe', id); }, onPipeMouseDown: (e, id) => handlePointerDown(e, 'pipe', id), onVertexMouseDown: (e, pid, idx) => { e.stopPropagation(); setDragVertex({ pipeId: pid, index: idx }); } }} unitSettings={globalUnitSettings} />;
                })}
                {nodes.map(node => {
                   const res = nodeResultsDisplay.get(node.id);
                   const hnd = { onMouseDown: (e: any, id: string) => handlePointerDown(e, 'node', id), onClick: (e: any, id: string) => { e.stopPropagation(); setSelectedNodeId(id); setSelectedPipeId(null); setSelectedAnnotationId(null); }, onDoubleClick: (e: any, id: string) => { openProperties('node', id); } };
-                  if (node.type === 'source') return <NetworkReservoir key={node.id} node={node} isSelected={selectedNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} handlers={hnd} />;
-                  if (node.type === 'well') return <NetworkWell key={node.id} node={node} isSelected={selectedNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} handlers={hnd} />;
+                  if (node.type === 'source') return <NetworkReservoir key={node.id} node={node} isSelected={selectedNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} handlers={hnd} unitSettings={globalUnitSettings} />;
+                  if (node.type === 'well') return <NetworkWell key={node.id} node={node} isSelected={selectedNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} handlers={hnd} unitSettings={globalUnitSettings} />;
                   if (node.type === 'pump') {
                       const suctionId = pumpSuctionMap.get(node.id);
                       const suctionRes = suctionId ? nodeResultsDisplay.get(suctionId) : undefined;
@@ -1204,9 +1270,9 @@ export default function App() {
                       if (snapshot) { pipes.filter(p => (p.startNodeId === node.id || p.endNodeId === node.id) && (p.startNodeId !== suctionId && p.endNodeId !== suctionId)).forEach(p => { const pr = snapshot.results.find(r => r.segmentId === p.id); if(pr) Q_recalque += Math.abs(convertFlowFromSI(pr.flowRate, flowUnit)); }); }
                       const hMontante = suctionRes?.head || node.elevation; const hJusante = res?.head || node.elevation;
                       const pumpExtra = { H: snapshot ? Math.max(0, hJusante - hMontante) : 0, Q: Q_recalque, Pm: suctionRes?.pressure || 0 };
-                      return <NetworkPump key={node.id} node={node} isSelected={selectedNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} suctionNodeId={suctionId} nodesContext={nodes} pumpExtraData={pumpExtra} handlers={hnd} />;
+                      return <NetworkPump key={node.id} node={node} isSelected={selectedNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} suctionNodeId={suctionId} nodesContext={nodes} pumpExtraData={pumpExtra} handlers={hnd} unitSettings={globalUnitSettings} />;
                   }
-                  return <NetworkJunction key={node.id} node={node} isSelected={selectedNodeId === node.id} isDrawStart={drawStartNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} reportMode={visSettings.reportMode} handlers={hnd} />;
+                  return <NetworkJunction key={node.id} node={node} isSelected={selectedNodeId === node.id} isDrawStart={drawStartNodeId === node.id} resultDisplay={res} globalLabelPos={nodeLabelPos} globalLabelOffset={nodeLabelOffset} globalScale={computedScale} reportMode={visSettings.reportMode} handlers={hnd} unitSettings={globalUnitSettings} />;
                })}
             </svg>
         </div>
@@ -1254,8 +1320,8 @@ export default function App() {
            </div>
            <div className="flex-1 p-4 overflow-y-auto">
                <React.Suspense fallback={null}>
-                   {sidebarMode === 'results' ? <ResultsContent calcError={calcError} calcWarning={calcWarning} results={snapshot?.results || []} nodes={snapshot?.nodes || []} pipes={snapshot?.pipes || []} materials={materials} nodeResults={snapshot?.nodeResults} flowUnit={flowUnit} unitSystem={unitSystem} selectedPipeId={selectedPipeId} setSelectedPipeId={setSelectedPipeId} setSelectedNodeId={setSelectedNodeId} setShowMobileResults={setShowSidebar} onOpenTable={() => setActiveModal({ type: 'FLEX_TABLE' })} calcMethod={calcMethod} projectMetadata={projectMetadata} visSettings={visSettings} setVisSettings={setVisSettings} mapStyle={mapStyle} setMapStyle={setMapStyle} mapInstance={mapInstance} globalC={globalC} globalRoughness={globalRoughness} />
-                   : <div className="animate-fade-in">{selectedPipeId && <EditorPanel selectedPipe={pipes.find(p => p.id === selectedPipeId)} updatePipe={updatePipe} materials={materials} addFitting={addFittingToPipe} updateFitting={updateFittingInPipe} handleMaterialChange={changePipeMaterial} handleDiameterChange={handleDiameterChange} handleDeletePipe={(id: string) => { removePipe(id); setSnapshot(null); setSelectedPipeId(null); setShowSidebar(false); }} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} addVertex={addPipeVertex} resetVertices={(id: any) => updatePipe(id, { vertices: [] })} />}{selectedNodeId && <EditorPanel selectedNode={nodes.find(n => n.id === selectedNodeId)} updateNode={updateNode} handleDeleteNode={(id: string) => { removeNode(id); setSnapshot(null); setSelectedNodeId(null); setShowSidebar(false); }} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} fetchElevation={fetchElevation} isMapMode={isMapMode} coordFormat={coordFormat} />}{selectedAnnotationId && <AnnotationEditor annotation={annotations.find(a => a.id === selectedAnnotationId)!} onUpdate={updateAnnotation} onDelete={(id) => { removeAnnotation(id); setSelectedAnnotationId(null); setShowSidebar(false); }} onClose={() => setShowSidebar(false)} />}</div>}
+                   {sidebarMode === 'results' ? <ResultsContent calcError={calcError} calcWarning={calcWarning} results={snapshot?.results || []} nodes={snapshot?.nodes || []} pipes={snapshot?.pipes || []} materials={materials} nodeResults={snapshot?.nodeResults} flowUnit={flowUnit} unitSystem={unitSystem} selectedPipeId={selectedPipeId} setSelectedPipeId={setSelectedPipeId} setSelectedNodeId={setSelectedNodeId} setShowMobileResults={setShowSidebar} onOpenTable={() => setActiveModal({ type: 'FLEX_TABLE' })} onOpenLongitudinal={() => setIsLongitudinalModalOpen(true)} calcMethod={calcMethod} projectMetadata={projectMetadata} visSettings={visSettings} setVisSettings={setVisSettings} mapStyle={mapStyle} setMapStyle={setMapStyle} mapInstance={mapInstance} globalC={globalC} globalRoughness={globalRoughness} unitSettings={globalUnitSettings} annotations={annotations} />
+                   : <div className="animate-fade-in">{selectedPipeId && <EditorPanel selectedPipe={pipes.find(p => p.id === selectedPipeId)} updatePipe={updatePipe} materials={materials} addFitting={addFittingToPipe} updateFitting={updateFittingInPipe} handleMaterialChange={changePipeMaterial} handleDiameterChange={handleDiameterChange} handleDeletePipe={(id: string) => { removePipe(id); setSnapshot(null); setSelectedPipeId(null); setShowSidebar(false); }} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} addVertex={addPipeVertex} resetVertices={(id: any) => updatePipe(id, { vertices: [] })} />}{selectedNodeId && <EditorPanel selectedNode={nodes.find(n => n.id === selectedNodeId)} updateNode={updateNode} handleDeleteNode={(id: string) => { removeNode(id); setSnapshot(null); setSelectedNodeId(null); setShowSidebar(false); }} closeEditor={() => setShowSidebar(false)} unitSystem={unitSystem} flowUnit={flowUnit} fetchElevation={fetchElevation} isMapMode={isMapMode} coordFormat={coordFormat} />}{selectedAnnotationId && <AnnotationEditor annotation={annotations.find(a => a.id === selectedAnnotationId)!} onUpdate={updateAnnotation} onDelete={(id) => { removeAnnotation(id); setSelectedAnnotationId(null); setShowSidebar(false); }} onClose={() => setSelectedAnnotationId(null)} />}</div>}
                </React.Suspense>
            </div>
         </aside>
@@ -1324,6 +1390,7 @@ export default function App() {
                           if (data.settings.visSettings) setVisSettings(data.settings.visSettings);
                           if (data.settings.nodeLabelPos) setNodeLabelPos(data.settings.nodeLabelPos as LabelPosition);
                           if (data.settings.nodeLabelOffset !== undefined) setNodeLabelOffset(data.settings.nodeLabelOffset);
+                          if (data.settings.unitSettings) setGlobalUnitSettings(data.settings.unitSettings);
                       }
                       
                       setSnapshot(null);
@@ -1380,6 +1447,7 @@ export default function App() {
                               if (data.settings.visSettings) setVisSettings(data.settings.visSettings);
                               if (data.settings.nodeLabelPos) setNodeLabelPos(data.settings.nodeLabelPos as LabelPosition);
                               if (data.settings.nodeLabelOffset !== undefined) setNodeLabelOffset(data.settings.nodeLabelOffset);
+                              if (data.settings.unitSettings) setGlobalUnitSettings(data.settings.unitSettings);
                           }
 
                           setSnapshot(null);
@@ -1413,6 +1481,31 @@ export default function App() {
 
       <React.Suspense fallback={null}>
           {renderActiveModal()}
+          {isLongitudinalModalOpen && (
+              <LongitudinalProfileModal 
+                  isOpen={isLongitudinalModalOpen} 
+                  onClose={() => setIsLongitudinalModalOpen(false)} 
+                  nodes={snapshot?.nodes || []} 
+                  pipes={snapshot?.pipes || []} 
+                  nodeResults={snapshot?.nodeResults} 
+                  results={snapshot?.results || []} 
+                  projectMetadata={projectMetadata} 
+                  unitSettings={globalUnitSettings}
+              />
+          )}
+          <DxfExportModal 
+              isOpen={isDxfExportOpen}
+              onClose={() => setIsDxfExportOpen(false)}
+              nodes={snapshot?.nodes || nodes}
+              pipes={snapshot?.pipes || pipes}
+              materials={materials}
+              results={snapshot?.results || []}
+              nodeResults={snapshot?.nodeResults}
+              annotations={annotations}
+              isMapMode={isMapMode}
+              projectMetadata={projectMetadata}
+              flowUnit={flowUnit}
+          />
       </React.Suspense>
 
       <BottomBar onToggleDraw={toggleDrawMode} onAddNode={addNewNode} onAddPipe={() => { if (nodes.length >= 2) createPipeBetween(nodes[nodes.length - 2].id, nodes[nodes.length - 1].id); else showValidationToast("Crie ao menos 2 nós primeiro."); }} onToggleResults={() => { setSidebarMode('results'); setShowSidebar(!showSidebar || sidebarMode !== 'results'); }} onToggleConfig={() => setActiveModal({ type: 'CONFIG' })} isDrawMode={isDrawMode} isResultsOpen={showSidebar && sidebarMode === 'results'} isConfigOpen={activeModal?.type === 'CONFIG'} />

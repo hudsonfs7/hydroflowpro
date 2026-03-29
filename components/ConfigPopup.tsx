@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { 
-  FlowUnit, CalcMethod, SolverType, LabelPosition, VisualizationSettings, MDConfig, Node, PipeSegment, CalculationResult, NodeResult, EVTEConfig, Material 
+  FlowUnit, CalcMethod, SolverType, LabelPosition, VisualizationSettings, MDConfig, Node, PipeSegment, CalculationResult, NodeResult, EVTEConfig, Material, GlobalUnitSettings
 } from '../types';
 import { GlobalSettingsInputs, DirectionControl } from './ResultsPanel';
 import { 
@@ -44,9 +44,11 @@ interface ConfigPopupProps {
     nodeResults: NodeResult[];
     materials: Material[];
   } | null;
+  unitSettings: GlobalUnitSettings;
+  setUnitSettings: (s: GlobalUnitSettings) => void;
 }
 
-type ConfigTab = 'calc' | 'scale' | 'vis' | 'md';
+type ConfigTab = 'calc' | 'scale' | 'vis' | 'md' | 'units';
 
 export const ConfigPopup: React.FC<ConfigPopupProps> = ({
   onClose, flowUnit, setFlowUnit, calcMethod, setCalcMethod,
@@ -54,7 +56,8 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
   solverType, setSolverType, visSettings, setVisSettings,
   nodeLabelPos, setNodeLabelPos, nodeLabelOffset, setNodeLabelOffset,
   onApplyGlobal, mdConfig, setMdConfig, 
-  evteConfig, setEvteConfig, projectData
+  evteConfig, setEvteConfig, projectData,
+  unitSettings, setUnitSettings
 }) => {
   const [activeTab, setActiveTab] = useState<ConfigTab | 'evte'>('calc');
   const selectClass = "w-full bg-white border border-slate-200 rounded-md px-3 py-1.5 text-[12px] text-slate-700 outline-none focus:border-blue-500 transition-all shadow-sm font-medium";
@@ -141,6 +144,7 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
           <TabBtn active={activeTab === 'vis'} onClick={() => setActiveTab('vis')} label="Anotações" icon={<EyeIcon />} />
           <TabBtn active={activeTab === 'md'} onClick={() => setActiveTab('md')} label="MD (ABNT)" icon={<FileTextIcon />} />
           <TabBtn active={activeTab === 'evte'} onClick={() => setActiveTab('evte')} label="EVTE Beta" icon={<MapIcon />} />
+          <TabBtn active={activeTab === 'units'} onClick={() => setActiveTab('units')} label="Unidades" icon={<SettingsIcon />} />
         </div>
 
         <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
@@ -349,6 +353,90 @@ export const ConfigPopup: React.FC<ConfigPopupProps> = ({
                   ⚠️ Ative o motor de cálculo para incluir os resultados na planta.
                 </p>
               )}
+            </div>
+          )}
+
+          {activeTab === 'units' && (
+            <div className="space-y-8 animate-fade-in">
+              <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="text-slate-600 font-bold text-xs uppercase tracking-widest">Configuração de Medidas e Precisão</div>
+                </div>
+                
+                <div className="space-y-6">
+                    {/* Meters Section */}
+                    <div className="p-4 bg-white border border-slate-100 rounded-lg shadow-sm">
+                        <h4 className="text-[10px] font-black text-blue-600 uppercase mb-3 tracking-widest">Medidas em Metros (m)</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <InputGroup label="Casas Decimais (Cotas/HGL/Extensão)">
+                                <select 
+                                    value={unitSettings.meters.decimals} 
+                                    onChange={e => setUnitSettings({...unitSettings, meters: {...unitSettings.meters, decimals: parseInt(e.target.value)}})}
+                                    className={selectClass}
+                                >
+                                    {[0,1,2,3,4].map(n => <option key={n} value={n}>{n} casas</option>)}
+                                </select>
+                            </InputGroup>
+                            <div className="flex items-end pb-1.5 px-2">
+                                <span className="text-[10px] text-slate-400 font-medium italic">Ex: {(123.45678).toFixed(unitSettings.meters.decimals)} m</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Pressure Section */}
+                    <div className="p-4 bg-white border border-slate-100 rounded-lg shadow-sm">
+                        <h4 className="text-[10px] font-black text-blue-600 uppercase mb-3 tracking-widest">Medidas de Pressão (mca)</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <InputGroup label="Casas Decimais (Pressão nos Nós)">
+                                <select 
+                                    value={unitSettings.pressure.decimals} 
+                                    onChange={e => setUnitSettings({...unitSettings, pressure: {...unitSettings.pressure, decimals: parseInt(e.target.value)}})}
+                                    className={selectClass}
+                                >
+                                    {[0,1,2,3,4].map(n => <option key={n} value={n}>{n} casas</option>)}
+                                </select>
+                            </InputGroup>
+                            <div className="flex items-end pb-1.5 px-2">
+                                <span className="text-[10px] text-slate-400 font-medium italic">Ex: {(15.2345).toFixed(unitSettings.pressure.decimals)} mca</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Flow Section */}
+                    <div className="p-4 bg-white border border-slate-100 rounded-lg shadow-sm">
+                        <h4 className="text-[10px] font-black text-blue-600 uppercase mb-3 tracking-widest">Medidas de Vazão</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <InputGroup label="Unidade de Vazão">
+                                <select 
+                                    value={unitSettings.flow.unit} 
+                                    onChange={e => {
+                                        const u = e.target.value as FlowUnit;
+                                        setFlowUnit(u);
+                                        setUnitSettings({...unitSettings, flow: {...unitSettings.flow, unit: u}});
+                                    }}
+                                    className={selectClass}
+                                >
+                                    <option value="l/s">L/s (Litros por segundo)</option>
+                                    <option value="m3/h">m³/h (Metros cúbicos por hora)</option>
+                                </select>
+                            </InputGroup>
+                            <InputGroup label="Casas Decimais">
+                                <select 
+                                    value={unitSettings.flow.decimals} 
+                                    onChange={e => setUnitSettings({...unitSettings, flow: {...unitSettings.flow, decimals: parseInt(e.target.value)}})}
+                                    className={selectClass}
+                                >
+                                    {[0,1,2,3,4].map(n => <option key={n} value={n}>{n} casas</option>)}
+                                </select>
+                            </InputGroup>
+                        </div>
+                        <div className="mt-2 text-[10px] text-slate-400 font-medium px-1">
+                            A troca da unidade de vazão converte automaticamente todas as demandas e resultados calculados.
+                        </div>
+                    </div>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 italic font-medium">As alterações de precisão decimal são aplicadas instantaneamente em todos os painéis e rótulos do projeto.</p>
             </div>
           )}
         </div>
