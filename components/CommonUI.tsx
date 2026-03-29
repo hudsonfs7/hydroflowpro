@@ -1,9 +1,9 @@
 
 import React, { Component, useState, useEffect, ReactNode, ErrorInfo, useRef } from 'react';
 
-export const InputGroup = ({ label, children }: { label: string; children?: ReactNode }) => (
+export const InputGroup = ({ label, children, labelColor = "text-slate-500" }: { label: string; children?: ReactNode; labelColor?: string }) => (
   <div className="flex flex-col gap-1 mb-2">
-    <label className="text-xs font-semibold text-slate-500 uppercase">{label}</label>
+    <label className={`text-xs font-semibold uppercase ${labelColor}`}>{label}</label>
     {children}
   </div>
 );

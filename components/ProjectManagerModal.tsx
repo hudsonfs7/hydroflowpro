@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, ProjectMetadata } from '../types';
-import { getCloudProjects } from '../services/firebaseService';
+import { getCloudProjects, updateProjectInCloud } from '../services/firebaseService';
 import { ModalContainer } from './CommonUI';
-import { CloseIcon, MapIcon, WalletIcon, FileSignatureIcon, PenToolIcon, BuildingIcon, ChartIcon, UserIcon, WaypointIcon, SettingsIcon, FolderIcon } from './Icons';
+import { CloseIcon, MapIcon, WalletIcon, FileSignatureIcon, PenToolIcon, BuildingIcon, ChartIcon, UserIcon, WaypointIcon, SettingsIcon, FolderIcon, CheckIcon } from './Icons';
 
 interface ProjectManagerModalProps {
     onClose: () => void;
@@ -32,6 +32,11 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
     const [projects, setProjects] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // New States for Observations
+    const [showNewObs, setShowNewObs] = useState(false);
+    const [newObsText, setNewObsText] = useState("");
+    const [newObsPublic, setNewObsPublic] = useState(true);
 
     useEffect(() => {
         const load = async () => {
@@ -65,6 +70,84 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
             return null;
         }
     }, [activeProject]);
+
+    // Handlers
+    const handleUpdateStatus = async (field: string, value: string) => {
+        if (!activeProject || !metadata) return;
+        const newStatus = { ...(metadata.projectStatus || { evte: 'Pendente', water: 'Andamento', sewage: 'Andamento' }), [field]: value };
+        const updatedMetadata = { ...metadata, projectStatus: newStatus };
+        const pData = JSON.parse(activeProject.data);
+        pData.metadata = updatedMetadata;
+        
+        try {
+            await updateProjectInCloud(activeProject.id, activeProject.name, pData);
+            setProjects(prev => prev.map(p => p.id === activeProject.id ? { ...p, data: JSON.stringify(pData) } : p));
+        } catch (e) {
+            alert("Erro ao atualizar status.");
+        }
+    };
+
+    const handleAddObservation = async () => {
+        if (!activeProject || !metadata || !newObsText.trim()) return;
+        
+        const newObs: any = {
+            id: Math.random().toString(36).substr(2, 9),
+            text: newObsText,
+            date: new Date().toISOString(),
+            author: currentUser?.username || 'Sistema',
+            visibleToPublic: newObsPublic,
+            acknowledged: false
+        };
+
+        const updatedObs = [...(metadata.observations || []), newObs];
+        const updatedMetadata = { ...metadata, observations: updatedObs };
+        const pData = JSON.parse(activeProject.data);
+        pData.metadata = updatedMetadata;
+
+        try {
+            await updateProjectInCloud(activeProject.id, activeProject.name, pData);
+            setProjects(prev => prev.map(p => p.id === activeProject.id ? { ...p, data: JSON.stringify(pData) } : p));
+            setNewObsText("");
+            setShowNewObs(false);
+            
+            if (newObsPublic) {
+                console.log(`[SIMULAÇÃO EMAIL] Para: ${metadata.company} - Assunto: Nova atualização no projeto ${activeProject.name}. Protocolo: ${metadata.projectCode}`);
+            }
+        } catch (e) {
+            alert("Erro ao remover observação.");
+        }
+    };
+
+    const handleUpdatePortalSettings = async (settings: Partial<any>) => {
+        if (!activeProject || !metadata) return;
+        const newPortalSettings = { ...(metadata.portalSettings || {}), ...settings };
+        const updatedMetadata = { ...metadata, portalSettings: newPortalSettings };
+        const pData = JSON.parse(activeProject.data);
+        pData.metadata = updatedMetadata;
+        
+        try {
+            await updateProjectInCloud(activeProject.id, activeProject.name, pData);
+            setProjects(prev => prev.map(p => p.id === activeProject.id ? { ...p, data: JSON.stringify(pData) } : p));
+        } catch (e) {
+            alert("Erro ao atualizar configurações do portal.");
+        }
+    };
+
+    const handleDeleteObservation = async (id: string) => {
+        if (!activeProject || !metadata || !window.confirm("Excluir esta observação?")) return;
+        
+        const updatedObs = (metadata.observations || []).filter((o: any) => o.id !== id);
+        const updatedMetadata = { ...metadata, observations: updatedObs };
+        const pData = JSON.parse(activeProject.data);
+        pData.metadata = updatedMetadata;
+
+        try {
+            await updateProjectInCloud(activeProject.id, activeProject.name, pData);
+            setProjects(prev => prev.map(p => p.id === activeProject.id ? { ...p, data: JSON.stringify(pData) } : p));
+        } catch (e) {
+            alert("Erro ao excluir observação.");
+        }
+    };
 
     // Renderiza estado vazio se não houver projeto ativo
     if (!activeProjectId || (!loading && !activeProject)) {
@@ -136,7 +219,7 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
                                         <div className="flex items-center gap-3 mb-3">
                                             <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[9px] font-black rounded-full uppercase tracking-widest">PROJETO ATUAL</span>
                                             <span className="text-slate-200">•</span>
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {activeProjectId?.slice(0, 12)}</span>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prot: {metadata?.projectCode || activeProjectId?.slice(0, 8)}</span>
                                         </div>
                                         <h1 className="text-4xl font-black text-slate-900 leading-tight uppercase tracking-tighter mb-2">{activeProject?.name}</h1>
                                         <p className="text-slate-500 font-bold uppercase tracking-tight text-sm flex items-center gap-2">
@@ -170,18 +253,168 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
                                     </div>
                                 </TechnicalSection>
 
-                                {/* Seção 3: Estatísticas de Lotes */}
-                                <TechnicalSection title="Inventário de Lotes" icon={<ChartIcon />}>
-                                    <div className="space-y-4">
-                                        <LotRow label="Habitacional" value={metadata?.lotsHab || 0} color="text-blue-600" bg="bg-blue-50" icon={<FolderIcon />} />
-                                        <LotRow label="Comercial" value={metadata?.lotsCom || 0} color="text-indigo-600" bg="bg-indigo-50" icon={<BuildingIcon />} />
-                                        <LotRow label="Institucional" value={metadata?.lotsInst || 0} color="text-slate-600" bg="bg-slate-100" icon={<SettingsIcon />} />
-                                        <div className="pt-4 border-t border-slate-100 flex justify-between items-center px-2">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Geral</span>
-                                            <span className="text-xl font-black text-slate-900">{(metadata?.lotsHab || 0) + (metadata?.lotsCom || 0) + (metadata?.lotsInst || 0)}</span>
-                                        </div>
+                                {/* Seção 3: Status do Protocolo */}
+                                <TechnicalSection title="Gestão de Fases / Status" icon={<ChartIcon />}>
+                                    <div className="space-y-6">
+                                        <StatusSelector 
+                                            label="Viabilidade (EVTE)" 
+                                            value={metadata?.projectStatus?.evte || 'Pendente'} 
+                                            options={['Pendente', 'Emitida']}
+                                            onChange={(val) => handleUpdateStatus('evte', val)}
+                                        />
+                                        <StatusSelector 
+                                            label="Projeto de Água" 
+                                            value={metadata?.projectStatus?.water || 'Andamento'} 
+                                            options={['Andamento', 'Concluído']}
+                                            onChange={(val) => handleUpdateStatus('water', val)}
+                                        />
+                                        <StatusSelector 
+                                            label="Projeto de Esgoto" 
+                                            value={metadata?.projectStatus?.sewage || 'Andamento'} 
+                                            options={['Andamento', 'Concluído']}
+                                            onChange={(val) => handleUpdateStatus('sewage', val)}
+                                        />
                                     </div>
                                 </TechnicalSection>
+                            </div>
+
+                            {/* Seção Nova: Diário de Observações e Protocolo */}
+                            <div className="bg-white rounded-[2rem] p-8 border border-slate-200/60 shadow-sm">
+                                <div className="flex items-center justify-between mb-8">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center"><PenToolIcon /></div>
+                                        <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-900 leading-none mt-1">Diário de Observações do Projeto</h4>
+                                    </div>
+                                    <button 
+                                        onClick={() => setShowNewObs(true)}
+                                        className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase hover:bg-black transition-all"
+                                    >
+                                        Nova Anotação
+                                    </button>
+                                </div>
+
+                                {showNewObs && (
+                                    <div className="mb-8 p-6 bg-slate-50 rounded-2xl border border-slate-200 animate-slide-up">
+                                        <h5 className="text-[10px] font-black text-slate-400 uppercase mb-4">Cadastrar Nova Informação</h5>
+                                        <textarea 
+                                            className="w-full bg-white border border-slate-200 rounded-xl p-4 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 h-24 mb-4"
+                                            placeholder="Descreva o andamento ou observação técnica..."
+                                            value={newObsText}
+                                            onChange={(e) => setNewObsText(e.target.value)}
+                                        />
+                                        <div className="flex items-center justify-between">
+                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    checked={newObsPublic}
+                                                    onChange={(e) => setNewObsPublic(e.target.checked)}
+                                                />
+                                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight group-hover:text-slate-900 transition-colors">Informar ao Empreendedor (Portal Público)</span>
+                                            </label>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => setShowNewObs(false)} className="px-4 py-2 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Cancelar</button>
+                                                <button 
+                                                    onClick={handleAddObservation}
+                                                    disabled={!newObsText.trim()}
+                                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50"
+                                                >
+                                                    Protocolar e Salvar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="space-y-4">
+                                    {(metadata?.observations || []).length === 0 ? (
+                                        <div className="py-12 text-center text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em] border-2 border-slate-50 border-dashed rounded-3xl">
+                                            Nenhum histórico registrado no protocolo
+                                        </div>
+                                    ) : (
+                                        [...(metadata?.observations || [])].reverse().map((obs: any) => (
+                                            <div key={obs.id} className="group bg-white border border-slate-100 p-5 rounded-2xl hover:border-slate-200 transition-all flex flex-col sm:flex-row gap-4">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{new Date(obs.date).toLocaleDateString()} {new Date(obs.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        <span className="text-slate-200 font-light text-[8px]">•</span>
+                                                        <span className="text-[9px] font-black text-blue-500 uppercase">Por: {obs.author}</span>
+                                                        {obs.visibleToPublic && (
+                                                            <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[8px] font-black rounded-full uppercase tracking-widest">Público</span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs font-bold text-slate-700 leading-relaxed">{obs.text}</p>
+                                                </div>
+                                                <div className="flex items-center gap-4 sm:border-l border-slate-50 sm:pl-6 shrink-0">
+                                                    {obs.visibleToPublic && (
+                                                        <div className="flex flex-col items-end">
+                                                            <span className="text-[8px] font-black text-slate-400 uppercase mb-1">Status Empreendedor</span>
+                                                            {obs.acknowledged ? (
+                                                                <div className="flex items-center gap-1.5 text-emerald-600">
+                                                                    <div className="w-4 h-4 bg-emerald-100 rounded-full flex items-center justify-center text-[8px]"><CheckIcon /></div>
+                                                                    <span className="text-[9px] font-black uppercase">Ciente em {new Date(obs.acknowledgedAt).toLocaleDateString()}</span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-[9px] font-black text-orange-400 uppercase">Aguardando Ciência</span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    <button 
+                                                        onClick={() => handleDeleteObservation(obs.id)}
+                                                        className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-200 hover:text-red-500 hover:bg-red-50 transition-all"
+                                                    >
+                                                        <CloseIcon />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Seção 3.5: Configurações do Portal Público (Dashboards) */}
+                            <div className="bg-slate-900 rounded-[2rem] p-8 border border-slate-800 shadow-2xl relative overflow-hidden mb-8">
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-[100px] -mr-32 -mt-32"></div>
+                                
+                                <div className="flex items-center justify-between mb-8 relative z-10">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20"><ChartIcon /></div>
+                                        <div>
+                                            <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-white leading-none mt-1">Visibilidade no Portal do Cliente</h4>
+                                            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-2 leading-none">Controle o que o empreendedor visualiza no dashboard público</p>
+                                        </div>
+                                    </div>
+                                    <div className="bg-blue-600/10 border border-blue-500/20 px-3 py-1.5 rounded-lg">
+                                        <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest leading-none">Dashboard Público</span>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
+                                    <div className="space-y-4">
+                                        <h5 className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">Exibir Módulos Técnicos</h5>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <PortalToggle label="EVTE" checked={metadata?.portalSettings?.showEvte} onChange={(v) => handleUpdatePortalSettings({ showEvte: v })} />
+                                            <PortalToggle label="Água" checked={metadata?.portalSettings?.showWater} onChange={(v) => handleUpdatePortalSettings({ showWater: v })} />
+                                            <PortalToggle label="Esgoto" checked={metadata?.portalSettings?.showSewage} onChange={(v) => handleUpdatePortalSettings({ showSewage: v })} />
+                                            <PortalToggle label="Orçamento" checked={metadata?.portalSettings?.showBudget} onChange={(v) => handleUpdatePortalSettings({ showBudget: v })} />
+                                            <PortalToggle label="Contrato" checked={metadata?.portalSettings?.showContract} onChange={(v) => handleUpdatePortalSettings({ showContract: v })} />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-slate-950/50 p-6 rounded-2xl border border-white/5 space-y-4">
+                                        <div className="flex justify-between items-center text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                                            <span>Progresso Global</span>
+                                            <span className="text-white bg-blue-600 px-2 py-0.5 rounded-full">{metadata?.portalSettings?.developmentProgress || 0}%</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="0" max="100" 
+                                            className="w-full h-1.5 bg-slate-800 rounded-full appearance-none cursor-pointer accent-blue-500"
+                                            value={metadata?.portalSettings?.developmentProgress || 0}
+                                            onChange={(e) => handleUpdatePortalSettings({ developmentProgress: parseInt(e.target.value) })}
+                                        />
+                                        <p className="text-[8px] font-bold text-slate-500 leading-relaxed uppercase">Arraste para definir o progresso que o cliente verá no Dashboard dele.</p>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Seção 4: Ações de Gestão */}
@@ -245,6 +478,37 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
         </ModalContainer>
     );
 };
+
+const StatusSelector = ({ label, value, options, onChange }: any) => (
+    <div className="flex flex-col gap-2">
+        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">{label}</label>
+        <select 
+            value={value} 
+            onChange={(e) => onChange(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer"
+        >
+            {options.map((opt: string) => (
+                <option key={opt} value={opt}>{opt}</option>
+            ))}
+        </select>
+    </div>
+);
+
+
+const PortalToggle = ({ label, checked, onChange }: { label: string, checked?: boolean, onChange: (val: boolean) => void }) => (
+    <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer group ${checked ? 'bg-blue-600/10 border-blue-500/30' : 'bg-slate-900 border-slate-800 hover:border-slate-700'}`}>
+        <span className={`text-[10px] font-black uppercase tracking-tight ${checked ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-400'}`}>{label}</span>
+        <div className="relative inline-flex items-center cursor-pointer">
+            <input 
+                type="checkbox" 
+                className="sr-only peer" 
+                checked={!!checked}
+                onChange={(e) => onChange(e.target.checked)}
+            />
+            <div className={`w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600`}></div>
+        </div>
+    </label>
+);
 
 // Sub-componentes Auxiliares
 const InfoItem = ({ icon, label, value }: any) => (

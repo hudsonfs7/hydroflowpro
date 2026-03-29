@@ -329,14 +329,156 @@ export const deleteProjectsByUser = async (userId: string, organizationId: strin
 
 
 /**
+ * Gera o próximo número de PROJETO globalmente (atomicamente).
+ * Formato: EX-001/2026 (3 letras do nome, sequencial 001, ano atual)
+ */
+export const generateNextProjectCode = async (projectName: string): Promise<string> => {
+    const { db, doc, runTransaction } = await getFirebaseDb();
+    const year = new Date().getFullYear();
+    const counterDocRef = doc(db, "system", "counters");
+
+    // Extrair prefixo (3 primeiras letras)
+    const prefix = projectName.substring(0, 3).toUpperCase().padEnd(3, 'X');
+
+    try {
+        const nextCount = await runTransaction(db, async (transaction: any) => {
+            const sfDoc = await transaction.get(counterDocRef);
+            let currentCount = 0;
+            if (sfDoc.exists()) {
+                currentCount = sfDoc.data().projectCount || 0;
+            } else {
+                transaction.set(counterDocRef, { projectCount: 0, proposalCount: 0 });
+            }
+            const nextVal = currentCount + 1;
+            transaction.update(counterDocRef, { projectCount: nextVal });
+            return nextVal;
+        });
+
+        return `${prefix}-${nextCount.toString().padStart(3, '0')}/${year}`;
+    } catch (err) {
+        console.error("Erro ao gerar código de projeto:", err);
+        throw new Error("Falha ao gerar código de projeto.");
+    }
+};
+
+/**
+ * Busca um projeto pelo Protocolo (ID Amigável) - ACESSO PÚBLICO.
+ * Retorna apenas metadados básicos para segurança.
+ */
+export const getProjectByProtocol = async (projectCode: string): Promise<any | null> => {
+    const { db, collection, query, where, getDocs } = await getFirebaseDb();
+    if (!projectCode) return null;
+
+    try {
+        const q = query(collection(db, "projects"), where("projectCode", "==", projectCode.trim().toUpperCase()));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) return null;
+        
+        const docSnap = snapshot.docs[0];
+        const fullData = docSnap.data();
+        const internalData = JSON.parse(fullData.data);
+        const meta = internalData.metadata;
+
+        // Regras de Negócio: Determinar o que exibir no dashboard
+        const acceptedProposal = meta.proposals?.find((p: any) => p.id === meta.acceptedProposalId);
+        
+        const showEvte = meta.portalSettings?.showEvte ?? !!acceptedProposal?.hasEvte;
+        const showWater = meta.portalSettings?.showWater ?? (acceptedProposal?.projectType === 'water' || acceptedProposal?.projectType === 'both');
+        const showSewage = meta.portalSettings?.showSewage ?? (acceptedProposal?.projectType === 'sewage' || acceptedProposal?.projectType === 'both');
+        
+        const showBudget = meta.portalSettings?.showBudget ?? !!acceptedProposal;
+        const showContract = meta.portalSettings?.showContract ?? !!meta.savedContract;
+
+        return {
+            id: docSnap.id,
+            name: fullData.name,
+            projectCode: fullData.projectCode,
+            company: meta.company,
+            city: meta.city,
+            status: meta.projectStatus || { evte: 'Pendente', water: 'Andamento', sewage: 'Andamento' },
+            observations: (meta.observations || []).filter((obs: any) => obs.visibleToPublic),
+            
+            // Flags de Visibilidade
+            visibility: {
+                evte: showEvte,
+                water: showWater,
+                sewage: showSewage,
+                budget: showBudget,
+                contract: showContract
+            },
+            
+            // Dados Resumidos (Apenas se visível)
+            budget: showBudget ? {
+                totalValue: acceptedProposal?.totalValue || 0,
+                status: acceptedProposal?.status || 'pending',
+                date: acceptedProposal?.createdAt || '',
+                items: (acceptedProposal?.extraItems || []).map((i: any) => ({ desc: i.description, qty: i.quantity, unit: i.unit }))
+            } : null,
+            
+            contract: showContract ? {
+                date: meta.savedContract?.date || '',
+                company: meta.savedContract?.companyName || ''
+            } : null,
+
+            progress: meta.portalSettings?.developmentProgress || 0
+        };
+    } catch (err) {
+        console.error("Erro ao consultar protocolo:", err);
+        return null;
+    }
+};
+
+/**
+ * Atualiza um projeto para dar ciente em uma observação (Público).
+ */
+export const acknowledgeObservation = async (projectId: string, observationId: string) => {
+    const { db, doc, getDoc, updateDoc, serverTimestamp } = await getFirebaseDb();
+    try {
+        const docRef = doc(db, "projects", projectId);
+        const snap = await getDoc(docRef);
+        if (!snap.exists()) return;
+
+        const data = snap.data();
+        const inner = JSON.parse(data.data);
+        const obs = inner.metadata.observations || [];
+        
+        const target = obs.find((o: any) => o.id === observationId);
+        if (target) {
+            target.acknowledged = true;
+            target.acknowledgedAt = new Date().toISOString();
+        }
+
+        await updateDoc(docRef, {
+            data: JSON.stringify(inner),
+            updatedAt: serverTimestamp()
+        });
+    } catch (e) {
+        console.error("Erro ao dar ciente:", e);
+    }
+};
+
+/**
  * Salva um projeto na nuvem (Cria Novo).
  */
 export const saveProjectToCloud = async (projectName: string, projectData: any, organizationId?: string) => {
     const { db, collection, addDoc, serverTimestamp } = await getFirebaseDb();
     try {
+        // Gerar o código amigável PRIMEIRO
+        const projectCode = await generateNextProjectCode(projectName);
+        
+        // Inserir no JSON (metadata) e no root level para busca rápida
+        const enrichedData = { ...projectData };
+        if (enrichedData.metadata) {
+            enrichedData.metadata.projectCode = projectCode;
+            enrichedData.metadata.projectStatus = { evte: 'Pendente', water: 'Andamento', sewage: 'Andamento' };
+            enrichedData.metadata.observations = [];
+        }
+
         const docRef = await addDoc(collection(db, "projects"), {
             name: projectName,
-            data: JSON.stringify(projectData),
+            projectCode: projectCode, // Campo root para consulta pública rápida
+            data: JSON.stringify(enrichedData),
             organizationId: organizationId || 'legacy',
             createdAt: serverTimestamp()
         });
@@ -385,9 +527,22 @@ export const deleteProjectFromCloud = async (id: string) => {
 };
 
 /**
+ * Busca um único projeto pelo ID.
+ */
+export const getProjectById = async (id: string): Promise<any | null> => {
+    const { db, doc, getDoc } = await getFirebaseDb();
+    try {
+        const snap = await getDoc(doc(db, "projects", id));
+        if (!snap.exists()) return null;
+        return { id: snap.id, ...snap.data() };
+    } catch (e) {
+        console.error("Erro ao carregar projeto por ID:", e);
+        return null;
+    }
+};
+
+/**
  * Busca a lista de projetos do servidor.
- * Se organizationId for 'MASTER_ACCESS', retorna tudo.
- * Caso contrário, filtra pela organização.
  */
 export const getCloudProjects = async (organizationId?: string): Promise<any[]> => {
     const { db, collection, query, orderBy, where, getDocs } = await getFirebaseDb();
@@ -434,6 +589,37 @@ export const getCloudProjects = async (organizationId?: string): Promise<any[]> 
         handleFirebaseError(error);
         return [];
     }
+};
+
+/**
+ * MIGRATION: Atualiza projetos antigos que não possuem ProjectCode.
+ */
+export const migrateProjects = async () => {
+    const { db, collection, getDocs, doc, updateDoc, serverTimestamp } = await getFirebaseDb();
+    const qSnapshot = await getDocs(collection(db, "projects"));
+    
+    console.log(`Iniciando migração de ${qSnapshot.size} projetos...`);
+    
+    for (const docSnap of qSnapshot.docs) {
+        const data = docSnap.data();
+        if (!data.projectCode) {
+            console.log(`Migrando projeto: ${data.name}`);
+            const newCode = await generateNextProjectCode(data.name);
+            const inner = JSON.parse(data.data);
+            
+            if (!inner.metadata) inner.metadata = {};
+            inner.metadata.projectCode = newCode;
+            inner.metadata.projectStatus = inner.metadata.projectStatus || { evte: 'Pendente', water: 'Andamento', sewage: 'Andamento' };
+            inner.metadata.observations = inner.metadata.observations || [];
+            
+            await updateDoc(doc(db, "projects", docSnap.id), {
+                projectCode: newCode,
+                data: JSON.stringify(inner),
+                updatedAt: serverTimestamp()
+            });
+        }
+    }
+    console.log("Migração concluída.");
 };
 
 /**

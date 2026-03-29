@@ -33,7 +33,9 @@ const CreateProjectModal = React.lazy(() => import('./components/CreateProjectMo
 const ProjectManagerModal = React.lazy(() => import('./components/ProjectManagerModal').then(m => ({ default: m.ProjectManagerModal })));
 const FinancialManagerModal = React.lazy(() => import('./components/FinancialManagerModal').then(m => ({ default: m.FinancialManagerModal })));
 const ProjectSelectorModal = React.lazy(() => import('./components/ProjectSelectorModal').then(m => ({ default: m.ProjectSelectorModal })));
-const LoginModal = React.lazy(() => import('./components/LoginModal').then(m => ({ default: m.LoginModal })));
+import { LoginModal } from './components/LoginModal';
+import { getProjectById } from './services/firebaseService';
+const ProtocolConsultModal = React.lazy(() => import('./components/ProtocolConsultModal').then(m => ({ default: m.ProtocolConsultModal })));
 const UserManagerModal = React.lazy(() => import('./components/UserManagerModal').then(m => ({ default: m.UserManagerModal })));
 const BudgetEditorModal = React.lazy(() => import('./components/BudgetEditorModal').then(m => ({ default: m.BudgetEditorModal })));
 const DocumentToolsModal = React.lazy(() => import('./components/DocumentToolsModal').then(m => ({ default: m.DocumentToolsModal })));
@@ -42,7 +44,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { generateDXF } from './services/dxfService'; 
 import { parseDxfToAnnotations } from './services/dxfImportService';
 import { getTileFromCache, saveTileToCache } from './services/tileCacheService';
-import { saveProjectToCloud, getCloudProjects, deleteProjectFromCloud, updateProjectInCloud, getOrganizationName } from './services/firebaseService';
+import { saveProjectToCloud, getCloudProjects, deleteProjectFromCloud, updateProjectInCloud, getOrganizationName, migrateProjects } from './services/firebaseService';
 import { COMMON_FITTINGS } from './constants';
 
 import { useProjectData } from './hooks/useProjectData';
@@ -117,14 +119,30 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<{ type: ModalView; data?: any } | null>(null);
   
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isProtocolConsultOpen, setIsProtocolConsultOpen] = useState(false);
   const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
   const [isProjectSelectorOpen, setIsProjectSelectorOpen] = useState(false);
   const [isFinancialManagerOpen, setIsFinancialManagerOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentOrgName, setCurrentOrgName] = useState<string>("");
+  const [initialProtocolCode, setInitialProtocolCode] = useState<string>("");
   
+  // Expose opener globally for simplicity in LoginModal
+  (window as any).openProtocolConsult = (code?: string) => {
+    if (code) setInitialProtocolCode(code);
+    setIsProtocolConsultOpen(true);
+  };
+
   const [managerRefreshKey, setManagerRefreshKey] = useState(0);
+  const [sessionRestored, setSessionRestored] = useState(false);
+
+  // Trigger Migration once if master
+  useEffect(() => {
+    if (currentUser?.role === 'master') {
+      migrateProjects();
+    }
+  }, [currentUser]);
 
   const activeDragRef = useRef<{ node: string | null, vertex: any, annVertex: any, annLabel: string | null }>({
       node: null, vertex: null, annVertex: null, annLabel: null
@@ -194,6 +212,31 @@ export default function App() {
       setValidationMsg(null);
     }, 3000);
   }, []);
+
+  // --- PERSISTENCE & MAP FIX ---
+  useEffect(() => {
+    // 1. Restore User Session (Manter Logado no Refresh)
+    const savedUser = localStorage.getItem('hf_currentUser');
+    if (savedUser) {
+      try {
+        const user = JSON.parse(savedUser);
+        setCurrentUser(user);
+        setIsLoginOpen(false);
+        setIsProjectSelectorOpen(true); // Forçar escolha de projeto
+      } catch (e) { console.error("Persistence error", e); }
+    }
+  }, []);
+
+  useEffect(() => {
+    // 2. Invalidate Map Size on Visibility change (Login -> App)
+    if (currentUser && mapInstance) {
+        setTimeout(() => {
+            mapInstance.invalidateSize();
+            console.log("Map size invalidated after login visibility change.");
+        }, 300); // Small delay to ensure DOM is ready
+    }
+  }, [currentUser, mapInstance]);
+
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -735,15 +778,18 @@ export default function App() {
       }
   };
 
-  const handleLogout = () => {
-      setCurrentUser(null);
-      setIsProjectManagerOpen(false);
-      setIsProjectSelectorOpen(false);
-      setIsFinancialManagerOpen(false);
-      setProjectMetadata(null);
-      showValidationToast("Você saiu do sistema.");
-      setShowProjectMenu(false);
-  };
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+    setProjectMetadata(null);
+    setNodes([]);
+    setPipes([]);
+    localStorage.removeItem('hf_currentUser');
+    setIsProjectManagerOpen(false);
+    setIsProjectSelectorOpen(false);
+    setIsFinancialManagerOpen(false);
+    showValidationToast("Você saiu do sistema.");
+    setShowProjectMenu(false);
+  }, []);
 
   const renderActiveModal = () => {
     if (isLoginOpen) {
@@ -935,14 +981,27 @@ export default function App() {
       <div className="fixed inset-0 z-[8000] bg-slate-950 flex items-center justify-center p-4 overflow-hidden">
         <div className="absolute w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[120px]" />
         <React.Suspense fallback={<div className="text-white font-bold animate-pulse italic">Carregando Acesso...</div>}>
-          <LoginModal 
-            onClose={() => {}} 
-            onLoginSuccess={(user) => { 
-                setCurrentUser(user); 
-                setIsProjectSelectorOpen(true);
-                showValidationToast(`Bem-vindo, ${user.username}`); 
-            }} 
-          />
+          {!isProtocolConsultOpen ? (
+              <LoginModal 
+                onClose={() => {}} 
+                onLoginSuccess={(user) => { 
+                    setCurrentUser(user); 
+                    localStorage.setItem('hf_currentUser', JSON.stringify(user));
+                    setIsProjectSelectorOpen(true);
+                    showValidationToast(`Bem-vindo, ${user.username}`); 
+                }} 
+              />
+          ) : (
+            <React.Suspense fallback={<div className="text-white font-bold animate-pulse italic">Carregando Consulta...</div>}>
+              <ProtocolConsultModal 
+                  initialCode={initialProtocolCode}
+                  onClose={() => {
+                    setIsProtocolConsultOpen(false);
+                    setInitialProtocolCode("");
+                  }} 
+              />
+            </React.Suspense>
+          )}
         </React.Suspense>
       </div>
     )}
@@ -1284,7 +1343,12 @@ export default function App() {
                   onSelect={(proj: any) => {
                       try {
                           const data = JSON.parse(proj.data);
-                          if (data.metadata) setProjectMetadata({ ...data.metadata, _id: proj.id });
+                          if (data.metadata) {
+                             setProjectMetadata({ ...data.metadata, _id: proj.id });
+                             if (currentUser) {
+                               localStorage.setItem(`hf_lastProject_${currentUser.id}`, proj.id);
+                             }
+                          }
                           if (data.nodes) setNodes(data.nodes); else setNodes([]);
                           if (data.pipes) setPipes(data.pipes); else setPipes([]);
                           if (data.demandGroups) setDemandGroups(data.demandGroups); else setDemandGroups([]);

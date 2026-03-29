@@ -127,6 +127,34 @@ export interface ProjectMetadata {
   savedContract?: ContractData;
   nextPipeIdx?: number;
   nextNodeIdx?: number;
+  
+  projectCode?: string;
+  projectStatus?: {
+    evte: 'Pendente' | 'Emitida';
+    water: 'Andamento' | 'Concluído';
+    sewage: 'Andamento' | 'Concluído';
+  };
+  observations?: ProjectObservation[];
+  portalSettings?: PortalSettings;
+}
+
+export interface PortalSettings {
+  showEvte?: boolean;
+  showWater?: boolean;
+  showSewage?: boolean;
+  showBudget?: boolean;
+  showContract?: boolean;
+  developmentProgress?: number; // 0-100
+}
+
+export interface ProjectObservation {
+  id: string;
+  text: string;
+  date: string;
+  author: string;
+  visibleToPublic: boolean;
+  acknowledged?: boolean;
+  acknowledgedAt?: string;
 }
 
 export interface PipeDiameterDefinition {
